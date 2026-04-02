@@ -18,6 +18,8 @@ export async function runAqiIngest(): Promise<{
       id: String(loc.id),
       name: loc.name,
       location: `POINT(${loc.coordinates!.longitude} ${loc.coordinates!.latitude})`,
+      lat: loc.coordinates!.latitude,
+      lng: loc.coordinates!.longitude,
       country: loc.country?.code ?? null,
       provider: loc.providers?.[0]?.name ?? null,
       is_mobile: loc.isMobile,
