@@ -542,6 +542,8 @@ pnpm lint
 - Config in prettier.config.js at repo root
 - Single quotes, semicolons, trailing commas, 100 char print width
 - Run `pnpm format` before committing
+- Never use loose equality (`==` / `!=`). Always use strict equality (`===` / `!==`).
+  For null+undefined checks use `=== null || === undefined` or TypeScript narrowing.
 
 ## Dev tooling
 
