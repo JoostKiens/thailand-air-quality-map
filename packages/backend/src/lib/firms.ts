@@ -10,8 +10,8 @@ export interface FirmsRow {
   satellite: string;
   confidence: string;
   daynight: string;
-  fireType: number | null;
-  countryId: string;
+  fireType: number | null; // not present in FIRMS area API response — always null
+  countryId: string | null; // not present in FIRMS area API response — always null
 }
 
 export async function fetchFirms(date: string): Promise<FirmsRow[]> {
@@ -31,9 +31,10 @@ export async function fetchFirms(date: string): Promise<FirmsRow[]> {
   return parseFirmsCsv(text);
 }
 
-// VIIRS SNPP NRT column order:
+// Actual VIIRS SNPP NRT area API columns (confirmed from live response):
 // latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,
-// confidence,version,bright_ti5,frp,type,daynight,country_id
+// instrument,confidence,version,bright_ti5,frp,daynight
+// Note: 'type' (fire_type) and 'country_id' are NOT included in area API responses.
 function parseFirmsCsv(csv: string): FirmsRow[] {
   const lines = csv.trim().split('\n');
   if (lines.length < 2) return []; // header only or empty
@@ -51,8 +52,6 @@ function parseFirmsCsv(csv: string): FirmsRow[] {
   const iSatellite = idx('satellite');
   const iConfidence = idx('confidence');
   const iDaynight = idx('daynight');
-  const iType = idx('type');
-  const iCountryId = idx('country_id');
 
   const rows: FirmsRow[] = [];
 
@@ -75,8 +74,8 @@ function parseFirmsCsv(csv: string): FirmsRow[] {
       satellite: cols[iSatellite]?.trim() ?? '',
       confidence: cols[iConfidence]?.trim() ?? '',
       daynight: cols[iDaynight]?.trim() ?? '',
-      fireType: parseNullableInt(cols[iType]),
-      countryId: cols[iCountryId]?.trim() ?? '',
+      fireType: null,
+      countryId: null,
     });
   }
 
@@ -86,11 +85,5 @@ function parseFirmsCsv(csv: string): FirmsRow[] {
 function parseNullableFloat(val: string | undefined): number | null {
   if (val === undefined || val.trim() === '' || val.trim() === 'nan') return null;
   const n = parseFloat(val);
-  return isNaN(n) ? null : n;
-}
-
-function parseNullableInt(val: string | undefined): number | null {
-  if (val === undefined || val.trim() === '') return null;
-  const n = parseInt(val, 10);
   return isNaN(n) ? null : n;
 }
