@@ -393,6 +393,8 @@ VITE_MAPBOX_TOKEN=                         # public token, pk.* prefix
 Never commit `.env` files. Provide `.env.example` files with all keys listed but
 no values. Never expose `SUPABASE_SERVICE_ROLE_KEY` or `FIRMS_MAP_KEY` to the frontend.
 
+**Claude must never read any `.env` file in this project, except `.env.example` files.**
+
 ---
 
 ## Development workflow
