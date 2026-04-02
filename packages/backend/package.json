@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ingest:firms": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-firms.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.1.0",
