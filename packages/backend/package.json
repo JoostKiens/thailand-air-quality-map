@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "ingest:firms": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-firms.ts",
-    "ingest:aqi": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aqi.ts"
+    "ingest:aqi": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aqi.ts",
+    "ingest:wind": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-wind.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.1.0",
