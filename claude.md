@@ -163,36 +163,76 @@ create extension if not exists postgis;
 
 -- Fire detections from VIIRS
 create table fire_points (
-  id          bigserial primary key,
-  detected_at timestamptz not null,
-  location    geography(Point, 4326) not null,
-  frp         float,          -- fire radiative power (MW)
-  brightness  float,
-  country_id  text,           -- 'MMR', 'LAO', 'THA', 'KHM', etc.
-  source      text default 'VIIRS_SNPP_NRT',
-  created_at  timestamptz default now()
+  id           bigserial primary key,
+  detected_at  timestamptz not null,
+  location     geography(Point, 4326) not null,
+  lat          float8 not null,
+  lng          float8 not null,
+  frp          float8,           -- fire radiative power (MW)
+  bright_ti4   float8,           -- brightness temperature band I-4 (~4µm, fire detection)
+  bright_ti5   float8,           -- brightness temperature band I-5 (~11µm, background)
+  country_id   text,             -- 'MMR', 'LAO', 'THA', 'KHM', etc.
+  satellite    text,             -- 'N' = Suomi-NPP, '1' = NOAA-20
+  confidence   text,             -- 'low', 'nominal', 'high'
+  daynight     text,             -- 'D' or 'N'
+  fire_type    int2,             -- 0=vegetation, 1=volcano, 2=static land, 3=offshore
+  source       text default 'VIIRS_SNPP_NRT',
+  created_at   timestamptz default now()
 );
 create index on fire_points using gist(location);
 create index on fire_points (detected_at);
+create index on fire_points (country_id);
+create index on fire_points (fire_type);
+create index on fire_points (confidence);
 
--- AQI / PM2.5 readings from monitoring stations
-create table aqi_readings (
-  id          bigserial primary key,
-  station_id  text not null,
-  station_name text,
-  location    geography(Point, 4326) not null,
-  pm25        float,
-  aqi         int,            -- computed from pm25 using US EPA formula
-  measured_at timestamptz not null,
-  source      text,           -- original data provider (e.g. 'PCD Thailand')
-  created_at  timestamptz default now()
+-- Monitoring station metadata (upserted on ingestion, rarely changes)
+create table stations (
+  id           text primary key,   -- OpenAQ locations_id as text
+  name         text not null,
+  location     geography(Point, 4326),
+  country      text,               -- 'TH', 'MM', 'LA', 'KH'
+  provider     text,               -- e.g. 'PCD Thailand'
+  is_mobile    boolean default false,
+  is_monitor   boolean,            -- true = reference grade, false = low-cost sensor
+  parameters   text[],             -- array of parameters this station measures
+  created_at   timestamptz default now(),
+  updated_at   timestamptz default now()
 );
-create index on aqi_readings using gist(location);
-create index on aqi_readings (measured_at);
-create index on aqi_readings (station_id, measured_at);
+create index on stations using gist(location);
+create index on stations (country);
+
+-- Time-series measurements (appended on every ingestion run)
+create table measurements (
+  id           bigserial primary key,
+  station_id   text not null references stations(id),
+  sensor_id    int4 not null,      -- OpenAQ sensors_id
+  parameter    text not null,      -- 'pm25', 'pm10', 'no2', 'o3', 'so2', 'co', 'bc'
+  value        float8 not null,
+  unit         text not null,      -- 'µg/m³', 'ppm', etc.
+  measured_at  timestamptz not null,
+  created_at   timestamptz default now()
+);
+create index on measurements (station_id, parameter, measured_at);
+create index on measurements (parameter, measured_at);
+create index on measurements (measured_at);
 ```
 
 Do not store wind data in Postgres — it is ephemeral and only needed for current display.
+
+### OpenAQ v3 data model note
+
+OpenAQ v3 uses a hierarchy: **Location → Sensors → Measurements**. Each location
+(station) contains multiple sensors, and each sensor tracks exactly one parameter.
+The ingestion job does two things per run:
+
+1. Upsert station metadata into `stations` (cheap, data rarely changes)
+2. Insert new rows into `measurements` for each parameter per station
+
+Parameters to ingest: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`, `bc`.
+Skip `temperature` and `humidity` — meteorological context comes from Open-Meteo.
+
+The `aqi_readings` table from earlier designs has been replaced by the
+`stations` + `measurements` two-table design. Do not recreate `aqi_readings`.
 
 ---
 
@@ -204,15 +244,21 @@ needed (format: `west,south,east,north`, default: `97,5,110,28`).
 ```
 GET /api/fires?date=YYYY-MM-DD&bbox=...
   Returns fire points for a given date. Checks Redis first, falls back to Supabase.
+  Supports optional query params: confidence=high,nominal  fire_type=0,2
 
 GET /api/fires/range?start=YYYY-MM-DD&end=YYYY-MM-DD&bbox=...
   Returns fire points for a date range (used by time scrubber). Max 10 days.
 
-GET /api/aqi/latest?bbox=...
-  Returns latest AQI reading per station. Redis first, then Supabase.
+GET /api/measurements/latest?parameter=pm25&bbox=...
+  Returns latest measurement per station for the given parameter.
+  Redis first, then Supabase. Default parameter: pm25.
 
-GET /api/aqi/history?station_id=...&hours=24
-  Returns time series for a single station (used in station tooltip chart).
+GET /api/measurements/history?station_id=...&parameter=pm25&hours=24
+  Returns time series for a single station and parameter.
+  Used in station tooltip chart.
+
+GET /api/stations?bbox=...
+  Returns all stations with their available parameters.
 
 GET /api/wind/current?bbox=...
   Returns current wind grid from Redis only (no DB fallback — refetch if missing).
@@ -233,20 +279,36 @@ export interface FirePoint {
   lat: number;
   lng: number;
   frp: number | null; // fire radiative power MW
-  brightness: number | null;
+  brightTi4: number | null; // brightness temperature band I-4
+  brightTi5: number | null; // brightness temperature band I-5
   countryId: string; // ISO 3166-1 alpha-3
+  satellite: string | null; // 'N' = Suomi-NPP, '1' = NOAA-20
+  confidence: string | null; // 'low' | 'nominal' | 'high'
+  daynight: string | null; // 'D' | 'N'
+  fireType: number | null; // 0=vegetation, 1=volcano, 2=static land, 3=offshore
 }
 
-// aqi.ts
-export interface AQIReading {
-  stationId: string;
-  stationName: string;
+// station.ts
+export interface Station {
+  id: string;
+  name: string;
   lat: number;
   lng: number;
-  pm25: number | null;
-  aqi: number | null;
-  measuredAt: string;
-  source: string;
+  country: string;
+  provider: string | null;
+  isMobile: boolean;
+  isMonitor: boolean | null;
+  parameters: string[];
+}
+
+// measurement.ts
+export interface Measurement {
+  stationId: string;
+  sensorId: number;
+  parameter: string; // 'pm25' | 'pm10' | 'no2' | 'o3' | 'so2' | 'co' | 'bc'
+  value: number;
+  unit: string;
+  measuredAt: string; // ISO 8601
 }
 
 export interface AQICategory {
@@ -264,6 +326,10 @@ export interface WindVector {
   directionDeg: number; // meteorological: 0=N, 90=E, 180=S, 270=W
 }
 ```
+
+Note: the `AQIReading` interface from earlier designs has been replaced by the
+`Station` + `Measurement` pair. Update any references to `AQIReading` accordingly.
+Also rename `packages/types/src/aqi.ts` to `measurement.ts` and add `station.ts`.
 
 ---
 
@@ -488,3 +554,36 @@ pnpm lint
 - Commitlint: conventional commits enforced on commit-msg hook
 - Vitest: packages/backend (node env) and packages/frontend (jsdom env)
 - .vscode/settings.json: formatOnSave, eslint fixOnSave, rulers at 100
+
+## fire_type classification
+
+The VIIRS FIRMS API returns a `fire_type` field for each detection.
+Do not use this field to filter out sources — use it to categorize and
+visualize sources separately. All types except volcanoes are potentially
+relevant to air pollution in the region.
+
+| Value | Label              | Relevant    | Notes                                                            |
+| ----- | ------------------ | ----------- | ---------------------------------------------------------------- |
+| 0     | Vegetation fire    | ✅ yes      | Agricultural burning, forest fires — primary cross-border source |
+| 1     | Active volcano     | ❌ no       | No active volcanoes in Thailand/Myanmar/Laos/Cambodia region     |
+| 2     | Static land source | ✅ yes      | Industrial facilities, refineries, power plants                  |
+| 3     | Offshore           | ✅ possibly | Offshore gas flaring in Gulf of Thailand                         |
+
+### Visualization implications
+
+- Do not pre-filter by fire_type during ingestion — store all detections
+- Expose fire_type as a filter in the sidebar UI so users can toggle
+  categories independently
+- Consider color-coding by fire_type as an alternative or addition to
+  color-coding by country
+- The distinction between type 0 (vegetation) and type 2 (industrial) is
+  analytically important: it helps separate agricultural burning narratives
+  from industrial pollution narratives, both of which are relevant to the
+  blame-shifting context this project addresses
+
+### Filtering recommendation
+
+The `confidence` field is the more appropriate field for filtering out
+noise. Filter to `confidence IN ('nominal', 'high')` by default in the
+UI, with an option to include low-confidence detections. Do not use
+fire_type as a quality filter.
