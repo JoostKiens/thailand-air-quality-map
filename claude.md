@@ -382,17 +382,12 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 | Layer         | Deck.gl type                     | Key props                                             |
 | ------------- | -------------------------------- | ----------------------------------------------------- |
 | PM2.5 heatmap | `HeatmapLayer`                   | `getWeight: d => d.pm25`, radius 50km                 |
-| Fire points   | `ScatterplotLayer`               | `getRadius: d => 500 + d.frp * 200`, color by country |
+| Fire points   | `ScatterplotLayer`               | `getRadius: d => 500 + d.frp * 200`, color: orange `#f97316` |
 | Wind vectors  | `ScatterplotLayer` + `PathLayer` | arrow glyphs, direction from `directionDeg`           |
 | Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
-Fire point color by country:
-
-- Myanmar `#ef4444` (red)
-- Laos `#f97316` (orange)
-- Thailand `#eab308` (yellow)
-- Cambodia `#a855f7` (purple)
-- Other `#6b7280` (gray)
+Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
+not return `country_id`, so per-country coloring is not available.
 
 AQI color scale (US EPA):
 
