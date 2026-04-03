@@ -9,6 +9,9 @@ import { createFiresLayer } from '../../layers/FiresLayer';
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
 const ZOOM = 5.5;
+const MIN_ZOOM = 4.0;
+// Data bbox [97,5,110,28] with 3° padding on each side
+const MAX_BOUNDS: mapboxgl.LngLatBoundsLike = [90, 1, 111, 29];
 
 export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +39,8 @@ export function MapView() {
       style: 'mapbox://styles/mapbox/dark-v11',
       center: CENTER,
       zoom: ZOOM,
+      minZoom: MIN_ZOOM,
+      maxBounds: MAX_BOUNDS,
       accessToken: TOKEN,
       projection: 'mercator',
     });
