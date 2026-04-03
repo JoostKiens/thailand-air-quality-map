@@ -61,39 +61,54 @@ export function firesRoutes(app: FastifyInstance): void {
   );
 }
 
+const PAGE_SIZE = 1000;
+
 async function queryFires(
   start: string,
   end: string,
   bbox: ReturnType<typeof parseBbox>,
 ): Promise<FirePoint[]> {
   const dayAfterEnd = new Date(new Date(end).getTime() + 86400000).toISOString().slice(0, 10);
+  const allRows: FirePoint[] = [];
+  let offset = 0;
 
-  const { data, error } = await supabase
-    .from('fire_points')
-    .select(
-      'id, detected_at, lat, lng, frp, bright_ti4, bright_ti5, satellite, confidence, daynight, country_id, fire_type',
-    )
-    .gte('detected_at', `${start}T00:00:00Z`)
-    .lt('detected_at', `${dayAfterEnd}T00:00:00Z`)
-    .gte('lat', bbox.south)
-    .lte('lat', bbox.north)
-    .gte('lng', bbox.west)
-    .lte('lng', bbox.east);
+  while (true) {
+    const { data, error } = await supabase
+      .from('fire_points')
+      .select(
+        'id, detected_at, lat, lng, frp, bright_ti4, bright_ti5, satellite, confidence, daynight, country_id, fire_type',
+      )
+      .gte('detected_at', `${start}T00:00:00Z`)
+      .lt('detected_at', `${dayAfterEnd}T00:00:00Z`)
+      .gte('lat', bbox.south)
+      .lte('lat', bbox.north)
+      .gte('lng', bbox.west)
+      .lte('lng', bbox.east)
+      .range(offset, offset + PAGE_SIZE - 1);
 
-  if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
 
-  return (data ?? []).map((row) => ({
-    id: row.id as number,
-    detectedAt: row.detected_at as string,
-    lat: row.lat as number,
-    lng: row.lng as number,
-    frp: row.frp as number | null,
-    brightTi4: row.bright_ti4 as number | null,
-    brightTi5: row.bright_ti5 as number | null,
-    countryId: (row.country_id as string | null) ?? '',
-    satellite: row.satellite as string | null,
-    confidence: row.confidence as string | null,
-    daynight: row.daynight as string | null,
-    fireType: row.fire_type as number | null,
-  }));
+    const rows = data ?? [];
+    for (const row of rows) {
+      allRows.push({
+        id: row.id as number,
+        detectedAt: row.detected_at as string,
+        lat: row.lat as number,
+        lng: row.lng as number,
+        frp: row.frp as number | null,
+        brightTi4: row.bright_ti4 as number | null,
+        brightTi5: row.bright_ti5 as number | null,
+        countryId: (row.country_id as string | null) ?? '',
+        satellite: row.satellite as string | null,
+        confidence: row.confidence as string | null,
+        daynight: row.daynight as string | null,
+        fireType: row.fire_type as number | null,
+      });
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allRows;
 }

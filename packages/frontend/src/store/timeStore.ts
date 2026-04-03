@@ -9,13 +9,13 @@ interface TimeStore {
   setRange: (start: string, end: string) => void;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
 export const useTimeStore = create<TimeStore>((set) => ({
-  selectedDate: today,
+  selectedDate: yesterday,
   rangeMode: false,
-  rangeStart: today,
-  rangeEnd: today,
+  rangeStart: yesterday,
+  rangeEnd: yesterday,
   setDate: (date) => set({ selectedDate: date }),
   setRange: (start, end) => set({ rangeMode: true, rangeStart: start, rangeEnd: end }),
 }));

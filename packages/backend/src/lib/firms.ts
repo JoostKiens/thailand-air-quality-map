@@ -1,4 +1,4 @@
-const BBOX = '97,5,110,28'; // west,south,east,north — covers Thailand, Myanmar, Laos, Cambodia
+const BBOX = '92,1,115,28'; // west,south,east,north — covers Myanmar, Thailand, Laos, Cambodia, Malaysia
 
 export interface FirmsRow {
   detectedAt: string; // ISO 8601 UTC
@@ -28,6 +28,14 @@ export async function fetchFirms(date: string): Promise<FirmsRow[]> {
   }
 
   const text = await res.text();
+
+  // FIRMS sometimes returns a plain-text or HTML error body with HTTP 200.
+  // Detect this before attempting CSV parse.
+  const firstLine = text.split('\n')[0].trim();
+  if (!firstLine.toLowerCase().startsWith('latitude')) {
+    throw new Error(`FIRMS API returned unexpected response: ${firstLine.slice(0, 200)}`);
+  }
+
   return parseFirmsCsv(text);
 }
 

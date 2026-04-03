@@ -1,5 +1,5 @@
 const BASE_URL = 'https://api.openaq.org/v3';
-const BBOX = '97,5,110,28'; // west,south,east,north
+const BBOX = '92,1,115,28'; // west,south,east,north — covers Myanmar, Thailand, Laos, Cambodia, Malaysia
 
 export const PARAMETERS = ['pm25', 'pm10', 'no2', 'o3', 'so2', 'co', 'bc'] as const;
 

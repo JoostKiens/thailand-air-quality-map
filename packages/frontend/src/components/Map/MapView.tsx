@@ -2,6 +2,9 @@ import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createOverlay, type OverlayInstance } from '../../lib/deck-overlay';
+import { useLayerStore } from '../../store/layerStore';
+import { useFires } from '../../hooks/useFires';
+import { createFiresLayer } from '../../layers/FiresLayer';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
@@ -12,6 +15,19 @@ export function MapView() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const overlayRef = useRef<OverlayInstance | null>(null);
 
+  const { data: fires } = useFires();
+  const firesConfig = useLayerStore((s) => s.layers.fires);
+
+  // Rebuild and push Deck.gl layers whenever data or visibility changes
+  useEffect(() => {
+    if (!overlayRef.current) return;
+    const layers = [];
+    if (firesConfig.visible && fires) {
+      layers.push(createFiresLayer(fires, firesConfig.opacity));
+    }
+    overlayRef.current.setProps({ layers });
+  }, [fires, firesConfig.visible, firesConfig.opacity]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -21,6 +37,7 @@ export function MapView() {
       center: CENTER,
       zoom: ZOOM,
       accessToken: TOKEN,
+      projection: 'mercator',
     });
 
     const overlay = createOverlay({ layers: [] });

@@ -1,4 +1,5 @@
 import { supabase } from '../db/client.js';
+import { redis } from '../cache/client.js';
 import { fetchFirms } from '../lib/firms.js';
 
 export async function runFirmsIngest(date?: string): Promise<{ inserted: number }> {
@@ -35,6 +36,10 @@ export async function runFirmsIngest(date?: string): Promise<{ inserted: number 
   if (error) {
     throw new Error(`Supabase upsert failed: ${error.message}`);
   }
+
+  // Invalidate the Redis cache for this date so the next API request re-fetches from Supabase.
+  // Without this, requests made before ingest runs would cache an empty result for up to 3h.
+  await redis.del(`fires:date:${targetDate}`);
 
   console.log(`[firms-ingest] Upserted ${records.length} rows (duplicates silently skipped)`);
   return { inserted: records.length };

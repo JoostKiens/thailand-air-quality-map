@@ -1,8 +1,8 @@
 import type { WindVector } from '@thailand-aq/types';
 
-// 2° grid over the data bbox (97–110°E, 5–27°N) → 7 × 12 = 84 points
-const LNG_POINTS = [97, 99, 101, 103, 105, 107, 109];
-const LAT_POINTS = [5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27];
+// 2° grid over the data bbox (92–114°E, 1–27°N) → 12 × 14 = 168 points
+const LNG_POINTS = [92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114];
+const LAT_POINTS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27];
 
 interface OpenMeteoResult {
   latitude: number;

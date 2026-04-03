@@ -5,7 +5,7 @@ export interface Bbox {
   north: number;
 }
 
-export const DEFAULT_BBOX = '97,5,110,28';
+export const DEFAULT_BBOX = '92,1,115,28';
 
 export function parseBbox(raw: string | undefined): Bbox {
   const str = raw ?? DEFAULT_BBOX;
