@@ -31,6 +31,68 @@ interface OpenAQResponse {
   results: OpenAQLocation[];
 }
 
+interface OpenAQMeasurement {
+  value: number;
+  period: {
+    datetimeFrom: { utc: string };
+    datetimeTo: { utc: string };
+  } | null;
+}
+
+interface OpenAQMeasurementsResponse {
+  meta: OpenAQMeta;
+  results: OpenAQMeasurement[];
+}
+
+export interface SensorMeasurement {
+  value: number;
+  datetimeUtc: string; // datetimeFrom.utc
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function fetchSensorMeasurements(
+  apiKey: string,
+  sensorId: number,
+  dateFrom: string,
+  dateTo: string,
+): Promise<SensorMeasurement[]> {
+  const url =
+    `${BASE_URL}/sensors/${sensorId}/measurements` +
+    `?datetime_from=${encodeURIComponent(dateFrom)}&datetime_to=${encodeURIComponent(dateTo)}&limit=1000`;
+
+  // Retry backoff: 10s, 20s, 40s, 60s — OpenAQ free tier enforces per-minute quotas
+  const RETRY_DELAYS = [10_000, 20_000, 40_000, 60_000];
+  let attempt = 0;
+
+  while (true) {
+    const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+
+    if (res.status === 429) {
+      if (attempt >= RETRY_DELAYS.length) {
+        console.warn(
+          `[openaq] sensor ${sensorId}: rate limited after ${attempt} retries, skipping`,
+        );
+        return [];
+      }
+      const wait = RETRY_DELAYS[attempt++];
+      console.warn(
+        `[openaq] sensor ${sensorId}: 429 rate limited, waiting ${wait / 1000}s (attempt ${attempt})`,
+      );
+      await sleep(wait);
+      continue;
+    }
+    if (res.status === 404) return []; // sensor has no data for this period
+    if (!res.ok)
+      throw new Error(`OpenAQ sensor ${sensorId} error: ${res.status} ${res.statusText}`);
+
+    const data = (await res.json()) as OpenAQMeasurementsResponse;
+    return data.results
+      .filter((r) => r.period !== null)
+      .map((r) => ({ value: r.value, datetimeUtc: r.period!.datetimeFrom.utc }));
+  }
+}
+
 export async function fetchLocations(): Promise<OpenAQLocation[]> {
   const apiKey = process.env.OPENAQ_API_KEY;
   if (!apiKey) throw new Error('OPENAQ_API_KEY env var is required');

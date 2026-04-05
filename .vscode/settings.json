@@ -11,6 +11,7 @@
     "bullmq",
     "daynight",
     "Meteo",
+    "NAAQS",
     "NOAA",
     "OPENAQ",
     "postgis",

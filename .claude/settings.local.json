@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.openaq.org)",
+      "WebSearch",
+      "WebFetch(domain:api.openaq.org)",
+      "Bash(pnpm:*)"
+    ]
+  }
+}

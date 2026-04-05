@@ -389,14 +389,16 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
 not return `country_id`, so per-country coloring is not available.
 
-AQI color scale (US EPA):
+AQI color scale (US EPA) — thresholds are raw **PM2.5 µg/m³**, not AQI index values:
 
-- 0–50 Good `#22c55e`
-- 51–100 Moderate `#eab308`
-- 101–150 Unhealthy for sensitive groups `#f97316`
-- 151–200 Unhealthy `#ef4444`
-- 201–300 Very unhealthy `#a855f7`
-- 301+ Hazardous `#be123c`
+| Category | PM2.5 µg/m³ | Color |
+|---|---|---|
+| Good | 0–12.0 | `#22c55e` |
+| Moderate | 12.1–35.4 | `#eab308` |
+| Unhealthy for sensitive groups | 35.5–55.4 | `#f97316` |
+| Unhealthy | 55.5–150.4 | `#ef4444` |
+| Very unhealthy | 150.5–250.4 | `#a855f7` |
+| Hazardous | 250.5+ | `#be123c` |
 
 ---
 
