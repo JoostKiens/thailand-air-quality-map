@@ -20,39 +20,48 @@ interface LatestMeasurement {
 }
 
 export function measurementsRoutes(app: FastifyInstance): void {
-  // GET /api/measurements/latest?parameter=pm25&bbox=...
-  app.get<{ Querystring: { parameter?: string; bbox?: string } }>(
+  // GET /api/measurements/latest?parameter=pm25&bbox=...&date=YYYY-MM-DD
+  app.get<{ Querystring: { parameter?: string; bbox?: string; date?: string } }>(
     '/api/measurements/latest',
     async (req, reply) => {
       const parameter = req.query.parameter ?? 'pm25';
       const rawBbox = req.query.bbox;
+      const date = req.query.date; // optional; when absent, returns last 24h
 
       if (!(VALID_PARAMETERS as readonly string[]).includes(parameter)) {
-        return reply
-          .status(400)
-          .send({
-            error: `Unknown parameter "${parameter}". Valid: ${VALID_PARAMETERS.join(', ')}`,
-          });
+        return reply.status(400).send({
+          error: `Unknown parameter "${parameter}". Valid: ${VALID_PARAMETERS.join(', ')}`,
+        });
       }
 
       const bbox = parseBbox(rawBbox);
       const isDefaultBbox = !rawBbox || rawBbox === DEFAULT_BBOX;
+      const cacheKey = `measurements:latest:${parameter}:${date ?? 'current'}`;
 
       if (isDefaultBbox) {
-        const cached = await redis.get<LatestMeasurement[]>(`measurements:latest:${parameter}`);
+        const cached = await redis.get<LatestMeasurement[]>(cacheKey);
         if (cached !== null) return reply.send({ data: cached });
       }
 
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // Date-specific window or rolling 24h
+      const since = date
+        ? `${date}T00:00:00Z`
+        : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const until = date ? `${date}T23:59:59Z` : undefined;
 
-      const { data: rows, error } = await supabase
+      let query = supabase
         .from('measurements')
         .select(
           'station_id, sensor_id, parameter, value, unit, measured_at, stations(id, name, lat, lng)',
         )
         .eq('parameter', parameter)
-        .gte('measured_at', since)
-        .order('measured_at', { ascending: false });
+        .gte('measured_at', since);
+
+      if (until !== undefined) {
+        query = query.lte('measured_at', until);
+      }
+
+      const { data: rows, error } = await query.order('measured_at', { ascending: false });
 
       if (error) throw new Error(`Supabase query failed: ${error.message}`);
 
@@ -93,7 +102,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
       }
 
       if (isDefaultBbox) {
-        await redis.set(`measurements:latest:${parameter}`, latest, { ex: CACHE_TTL_SECONDS });
+        await redis.set(cacheKey, latest, { ex: CACHE_TTL_SECONDS });
       }
 
       return reply.send({ data: latest });
@@ -111,11 +120,9 @@ export function measurementsRoutes(app: FastifyInstance): void {
         return reply.status(400).send({ error: 'Missing required param: station_id' });
 
       if (!(VALID_PARAMETERS as readonly string[]).includes(parameter)) {
-        return reply
-          .status(400)
-          .send({
-            error: `Unknown parameter "${parameter}". Valid: ${VALID_PARAMETERS.join(', ')}`,
-          });
+        return reply.status(400).send({
+          error: `Unknown parameter "${parameter}". Valid: ${VALID_PARAMETERS.join(', ')}`,
+        });
       }
 
       const hours = rawHours !== undefined ? Number(rawHours) : 24;

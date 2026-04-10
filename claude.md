@@ -142,6 +142,19 @@ keeps API keys server-side.
 - License: CC BY 4.0 — attribution link required in UI footer
 - Render as: static arrow vectors (ScatterplotLayer or custom PathLayer in Deck.gl)
 
+### Open-Meteo Air Quality — PM2.5 gridded model (CAMS)
+
+- Source: `https://air-quality-api.open-meteo.com/v1/air-quality`
+- Parameters: `pm2_5` (hourly), daily mean computed per grid point
+- Grid: 1° spacing over bbox [92,5,110,28] → 19 × 24 = **456 points** per date (extended west to 92°E to cover all of Myanmar)
+- No API key required
+- Schedule: every 6 hours (and on-demand for historical dates)
+- Storage: Redis only, key `aq:pm25:{YYYY-MM-DD}`, TTL 48h
+- License: CC BY 4.0 — same attribution as wind (Open-Meteo footer link covers both)
+- Data source: CAMS (Copernicus Atmosphere Monitoring Service) global model, ~11km resolution
+- Render as: `PolygonLayer` with 1°×1° rectangular cells colored by absolute AQI µg/m³ thresholds; clipped to land via `MaskExtension` using Natural Earth 50m country polygons (`src/data/sea-countries.json`)
+- Script: `pnpm --filter backend run ingest:aq YYYY-MM-DD`
+
 ### Mapbox Traffic
 
 - Built into Mapbox GL JS, enabled as a native layer
@@ -239,7 +252,7 @@ The `aqi_readings` table from earlier designs has been replaced by the
 ## API routes (Fastify backend)
 
 All routes return JSON. All accept a `bbox` query param where spatial filtering is
-needed (format: `west,south,east,north`, default: `97,5,110,28`).
+needed (format: `west,south,east,north`, default: `92,1,115,28`).
 
 ```
 GET /api/fires?date=YYYY-MM-DD&bbox=...
@@ -249,9 +262,10 @@ GET /api/fires?date=YYYY-MM-DD&bbox=...
 GET /api/fires/range?start=YYYY-MM-DD&end=YYYY-MM-DD&bbox=...
   Returns fire points for a date range (used by time scrubber). Max 10 days.
 
-GET /api/measurements/latest?parameter=pm25&bbox=...
+GET /api/measurements/latest?parameter=pm25&bbox=...&date=YYYY-MM-DD
   Returns latest measurement per station for the given parameter.
-  Redis first, then Supabase. Default parameter: pm25.
+  date is optional: when provided, queries that day's window; when absent, queries last 24h.
+  Redis first (key: measurements:latest:{param}:{date|current}), then Supabase.
 
 GET /api/measurements/history?station_id=...&parameter=pm25&hours=24
   Returns time series for a single station and parameter.
@@ -262,6 +276,10 @@ GET /api/stations?bbox=...
 
 GET /api/wind/current?bbox=...
   Returns current wind grid from Redis only (no DB fallback — refetch if missing).
+
+GET /api/aq/pm25?date=YYYY-MM-DD&bbox=...
+  Returns Open-Meteo CAMS gridded PM2.5 for a specific date (456 points at 1° grid, bbox [92,5,110,28]).
+  Redis first (key: aq:pm25:{date}, TTL 48h); on miss fetches live from Open-Meteo.
 
 GET /health
   Returns { status: 'ok', queues: {...}, cache: 'connected', db: 'connected' }
@@ -325,6 +343,13 @@ export interface WindVector {
   speedKmh: number;
   directionDeg: number; // meteorological: 0=N, 90=E, 180=S, 270=W
 }
+
+// aq.ts
+export interface PM25GridPoint {
+  lat: number;
+  lng: number;
+  pm25: number; // daily mean µg/m³ from CAMS model via Open-Meteo
+}
 ```
 
 Note: the `AQIReading` interface from earlier designs has been replaced by the
@@ -369,7 +394,8 @@ Each job lives in `packages/backend/src/jobs/`. Define job and worker separately
 ```
 firms-ingest       — runs every 3h, fetches VIIRS data, upserts to Supabase, updates Redis
 aqi-ingest         — runs every 1h, fetches OpenAQ data, upserts to Supabase, updates Redis
-wind-ingest        — runs every 6h, fetches Open-Meteo grid, writes to Redis (no DB)
+wind-ingest        — runs every 6h, fetches Open-Meteo wind grid, writes to Redis (no DB)
+aq-ingest          — runs every 6h, fetches Open-Meteo CAMS PM2.5 grid, writes to Redis (no DB)
 ```
 
 Job retry policy: 3 attempts with exponential backoff. Log failures but do not crash
@@ -381,8 +407,9 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 
 | Layer         | Deck.gl type                     | Key props                                             |
 | ------------- | -------------------------------- | ----------------------------------------------------- |
-| PM2.5 heatmap | `HeatmapLayer`                   | `getWeight: d => d.pm25`, radius 50km                 |
-| Fire points   | `ScatterplotLayer`               | `getRadius: d => 500 + d.frp * 200`, color: orange `#f97316` |
+| PM2.5 heatmap | `PolygonLayer` + `MaskExtension` | Open-Meteo CAMS grid, 1°×1° cells, `getFillColor: d => aqiColor(d.pm25)`, clipped to land via Natural Earth 50m mask |
+| PM2.5 stations| `ScatterplotLayer`               | OpenAQ ground stations, colored by `aqiColor(d.value)`, 5px radius |
+| Fire points   | `ScatterplotLayer`               | `getRadius: d => 375 + sqrt(frp)*150` meters, color: orange `#f97316` |
 | Wind vectors  | `ScatterplotLayer` + `PathLayer` | arrow glyphs, direction from `directionDeg`           |
 | Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
@@ -515,9 +542,10 @@ pnpm lint
   the wind is coming FROM (meteorological convention). To draw an arrow showing where
   wind is going, add 180 degrees before computing dx/dy.
 
-- The Deck.gl `HeatmapLayer` does not support time filtering client-side — filter
-  data server-side before sending to the frontend. Only send the data for the
-  currently selected date/range.
+- The PM2.5 grid uses `PolygonLayer` (not `HeatmapLayer`) because `HeatmapLayer` normalizes
+  weights relative to the viewport — the min value always maps to the first color regardless
+  of absolute µg/m³, producing incorrect AQI colors. `PolygonLayer` with direct `getFillColor`
+  uses the actual EPA thresholds. Filter data server-side; only send the selected date's grid.
 
 - Use `geography(Point, 4326)` not `geometry` in PostGIS for distance calculations
   in meters without projection math.

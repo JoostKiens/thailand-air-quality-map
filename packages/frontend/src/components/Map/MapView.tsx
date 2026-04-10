@@ -5,8 +5,13 @@ import { createOverlay, type OverlayInstance } from '../../lib/deck-overlay';
 import { useLayerStore } from '../../store/layerStore';
 import { useFires } from '../../hooks/useFires';
 import { useAQI } from '../../hooks/useAQI';
+import { useAQGrid } from '../../hooks/useAQGrid';
 import { createFiresLayer } from '../../layers/FiresLayer';
-import { createPM25Layer } from '../../layers/PM25Layer';
+import {
+  createLandMaskLayer,
+  createPM25HeatmapLayer,
+  createPM25StationsLayer,
+} from '../../layers/PM25Layer';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
@@ -22,6 +27,7 @@ export function MapView() {
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
+  const { data: aqGrid } = useAQGrid();
   const firesConfig = useLayerStore((s) => s.layers.fires);
   const pm25Config = useLayerStore((s) => s.layers.pm25);
 
@@ -29,21 +35,16 @@ export function MapView() {
   useEffect(() => {
     if (!overlayRef.current) return;
     const layers = [];
-    if (pm25Config.visible && aqi) {
-      layers.push(...createPM25Layer(aqi));
+    if (pm25Config.visible) {
+      layers.push(createLandMaskLayer()); // mask layer must precede the masked layer
+      if (aqGrid) layers.push(createPM25HeatmapLayer(aqGrid));
+      if (aqi) layers.push(createPM25StationsLayer(aqi));
     }
     if (firesConfig.visible && fires) {
       layers.push(createFiresLayer(fires, firesConfig.opacity));
     }
     overlayRef.current.setProps({ layers });
-  }, [
-    fires,
-    firesConfig.visible,
-    firesConfig.opacity,
-    aqi,
-    pm25Config.visible,
-    pm25Config.opacity,
-  ]);
+  }, [fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
 
   useEffect(() => {
     if (!containerRef.current) return;
