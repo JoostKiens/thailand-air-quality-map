@@ -3,7 +3,7 @@ import type { Position, PolygonLayerProps, SolidPolygonLayerProps } from 'deck.g
 import { MaskExtension } from '@deck.gl/extensions';
 import type { PM25GridPoint } from '@thailand-aq/types';
 import type { LatestMeasurement } from '../hooks/useAQI';
-import seaCountries from '../data/sea-countries.json';
+import seaCountries from '../data/sea-land-mask.json';
 
 type RGBA = [number, number, number, number];
 type Ring = number[][];
@@ -78,7 +78,7 @@ export function createPM25HeatmapLayer(data: PM25GridPoint[]) {
     filled: true,
     stroked: false,
     pickable: false,
-     
+
     extensions: [new MaskExtension()],
     maskId: 'land-mask',
   };
