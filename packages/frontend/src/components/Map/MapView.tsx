@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createOverlay, type OverlayInstance } from '../../lib/deck-overlay';
@@ -17,13 +17,21 @@ const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
 const ZOOM = 5.5;
 const MIN_ZOOM = 4.0;
-// Data bbox [97,5,110,28] with 3° padding on each side
-const MAX_BOUNDS: mapboxgl.LngLatBoundsLike = [90, 1, 111, 29];
+// Data bbox [92,5,110,28] with 3° padding on each side
+const MAX_BOUNDS: mapboxgl.LngLatBoundsLike = [89, 1, 114, 30];
+
+// Find the first Mapbox layer that represents admin boundaries or labels.
+// Deck.gl layers are inserted BEFORE this layer, so all borders and labels
+// remain legible on top of the data layers.
+function detectBeforeId(map: mapboxgl.Map): string | undefined {
+  const layers = map.getStyle().layers ?? [];
+  return layers.find((l) => l.id.startsWith('admin') || l.type === 'symbol')?.id;
+}
 
 export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const overlayRef = useRef<OverlayInstance | null>(null);
+  const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
@@ -31,9 +39,9 @@ export function MapView() {
   const firesConfig = useLayerStore((s) => s.layers.fires);
   const pm25Config = useLayerStore((s) => s.layers.pm25);
 
-  // Rebuild and push Deck.gl layers whenever data or visibility changes
+  // Rebuild and push Deck.gl layers whenever data, visibility, or overlay changes.
   useEffect(() => {
-    if (!overlayRef.current) return;
+    if (!overlay) return;
     const layers = [];
     if (pm25Config.visible) {
       layers.push(createLandMaskLayer()); // mask layer must precede the masked layer
@@ -43,11 +51,12 @@ export function MapView() {
     if (firesConfig.visible && fires) {
       layers.push(createFiresLayer(fires, firesConfig.opacity));
     }
-    overlayRef.current.setProps({ layers });
-  }, [fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
+    overlay.setProps({ layers });
+  }, [overlay, fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    let mounted = true;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -60,14 +69,23 @@ export function MapView() {
       projection: 'mercator',
     });
 
-    const overlay = createOverlay({ layers: [] });
-    map.addControl(overlay);
+    // Create the overlay only after the style has loaded so we can detect the
+    // first admin/symbol layer ID. This ensures admin boundaries, country
+    // borders, and all place labels render on top of the Deck.gl data layers.
+    map.on('load', () => {
+      if (!mounted) return;
+      const beforeId = detectBeforeId(map);
+      const ov = createOverlay({ layers: [] }, beforeId);
+      map.addControl(ov);
+      setOverlay(ov);
+    });
 
     mapRef.current = map;
-    overlayRef.current = overlay;
 
     return () => {
+      mounted = false;
       map.remove();
+      setOverlay(null);
     };
   }, []);
 
