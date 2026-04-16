@@ -26,11 +26,11 @@
     "bullmq": "^5.0.0",
     "dotenv": "^16.4.0",
     "fastify": "^5.0.0",
-    "ioredis": "^5.10.1"
+    "ioredis": "^5.10.1",
+    "tsx": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   }
