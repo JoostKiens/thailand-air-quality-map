@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env.local --import=tsx/esm --watch src/server.ts",
+    "scheduler": "node --env-file=.env.local --import=tsx/esm src/scheduler.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
@@ -13,7 +14,9 @@
     "ingest:firms": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-firms.ts",
     "ingest:aqi": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aqi.ts",
     "ingest:wind": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-wind.ts",
-    "ingest:aq": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq.ts"
+    "ingest:aq": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq.ts",
+    "backfill": "node --env-file=.env.local --import=tsx/esm src/scripts/backfill.ts",
+    "prune": "node --env-file=.env.local --import=tsx/esm src/scripts/prune.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.1.0",
@@ -22,7 +25,8 @@
     "@upstash/redis": "^1.34.0",
     "bullmq": "^5.0.0",
     "dotenv": "^16.4.0",
-    "fastify": "^5.0.0"
+    "fastify": "^5.0.0",
+    "ioredis": "^5.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

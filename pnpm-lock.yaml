@@ -62,6 +62,9 @@ importers:
       fastify:
         specifier: ^5.0.0
         version: 5.8.4
+      ioredis:
+        specifier: ^5.10.1
+        version: 5.10.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

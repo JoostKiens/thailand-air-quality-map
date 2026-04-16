@@ -15,6 +15,7 @@
     "NOAA",
     "OPENAQ",
     "postgis",
+    "rediss",
     "SNPP",
     "timestamptz",
     "winddirection",
