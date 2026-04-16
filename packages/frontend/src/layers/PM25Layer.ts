@@ -48,13 +48,14 @@ const LAND_RINGS = extractRings((seaCountries as { features: CountryFeature[] })
 // SolidPolygonLayer with operation:'mask' — renders TH/MM/LA/KH/VN land areas into
 // the mask buffer. Used by createPM25HeatmapLayer to clip grid cells to land.
 // Must appear in the layers array before the masked layer.
-export function createLandMaskLayer() {
+export function createLandMaskLayer(beforeId?: string) {
   const props: SolidPolygonLayerProps<Ring> = {
     id: 'land-mask',
     data: LAND_RINGS,
     getPolygon: (ring) => ring as unknown as Position[],
     filled: true,
     operation: 'mask',
+    ...({ beforeId } as object),
   };
   return new SolidPolygonLayer<Ring>(props);
 }
@@ -62,9 +63,10 @@ export function createLandMaskLayer() {
 // PolygonLayer — Open-Meteo CAMS gridded PM2.5, date-specific.
 // Each grid point is a 1°×1° rectangle colored by absolute AQI category.
 // Clipped to land areas via MaskExtension (no ocean tiles, pixel-perfect coastlines).
-export function createPM25HeatmapLayer(data: PM25GridPoint[]) {
+export function createPM25HeatmapLayer(data: PM25GridPoint[], beforeId?: string) {
   const props: PolygonLayerProps<PM25GridPoint> & MaskExtensionProps = {
     id: 'pm25-heatmap',
+    ...({ beforeId } as object),
     data,
     getPolygon: (d) =>
       [
@@ -87,9 +89,10 @@ export function createPM25HeatmapLayer(data: PM25GridPoint[]) {
 
 // ScatterplotLayer — OpenAQ ground station measurements, date-specific.
 // Each dot is colored by its actual PM2.5 AQI category.
-export function createPM25StationsLayer(data: LatestMeasurement[]) {
+export function createPM25StationsLayer(data: LatestMeasurement[], beforeId?: string) {
   return new ScatterplotLayer<LatestMeasurement>({
     id: 'pm25-stations',
+    ...({ beforeId } as object),
     data,
     getPosition: (d) => [d.lng, d.lat],
     getFillColor: (d) => aqiColor(d.value),

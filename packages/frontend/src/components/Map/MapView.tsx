@@ -31,6 +31,7 @@ function detectBeforeId(map: mapboxgl.Map): string | undefined {
 export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const beforeIdRef = useRef<string | undefined>(undefined);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
 
   const { data: fires } = useFires();
@@ -42,14 +43,15 @@ export function MapView() {
   // Rebuild and push Deck.gl layers whenever data, visibility, or overlay changes.
   useEffect(() => {
     if (!overlay) return;
+    const beforeId = beforeIdRef.current;
     const layers = [];
     if (pm25Config.visible) {
-      layers.push(createLandMaskLayer()); // mask layer must precede the masked layer
-      if (aqGrid) layers.push(createPM25HeatmapLayer(aqGrid));
-      if (aqi) layers.push(createPM25StationsLayer(aqi));
+      layers.push(createLandMaskLayer(beforeId)); // mask layer must precede the masked layer
+      if (aqGrid) layers.push(createPM25HeatmapLayer(aqGrid, beforeId));
+      if (aqi) layers.push(createPM25StationsLayer(aqi, beforeId));
     }
     if (firesConfig.visible && fires) {
-      layers.push(createFiresLayer(fires, firesConfig.opacity));
+      layers.push(createFiresLayer(fires, firesConfig.opacity, beforeId));
     }
     overlay.setProps({ layers });
   }, [overlay, fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
@@ -74,8 +76,8 @@ export function MapView() {
     // borders, and all place labels render on top of the Deck.gl data layers.
     map.on('load', () => {
       if (!mounted) return;
-      const beforeId = detectBeforeId(map);
-      const ov = createOverlay({ layers: [] }, beforeId);
+      beforeIdRef.current = detectBeforeId(map);
+      const ov = createOverlay({ layers: [] });
       map.addControl(ov);
       setOverlay(ov);
     });

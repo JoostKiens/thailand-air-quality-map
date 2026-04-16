@@ -3,7 +3,7 @@ import type { FirePoint } from '@thailand-aq/types';
 
 const FIRE_COLOR: [number, number, number, number] = [249, 115, 22, 255]; // orange
 
-export function createFiresLayer(data: FirePoint[], opacity: number) {
+export function createFiresLayer(data: FirePoint[], opacity: number, beforeId?: string) {
   return new ScatterplotLayer<FirePoint>({
     id: 'fires',
     data,
@@ -15,5 +15,6 @@ export function createFiresLayer(data: FirePoint[], opacity: number) {
     radiusMinPixels: 2,
     pickable: true,
     parameters: { depthCompare: 'always' },
+    ...({ beforeId } as object),
   });
 }
