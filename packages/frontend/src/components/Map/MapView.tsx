@@ -49,10 +49,12 @@ export function MapView() {
     if (pm25Config.visible) {
       layers.push(createLandMaskLayer(beforeId)); // mask layer must precede the masked layer
       if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
-      if (aqi) layers.push(createPM25StationsLayer(aqi, beforeId));
     }
     if (firesConfig.visible && fires) {
       layers.push(createFiresLayer(fires, firesConfig.opacity, beforeId));
+    }
+    if (pm25Config.visible && aqi) {
+      layers.push(createPM25StationsLayer(aqi, beforeId)); // stations render above fires
     }
     overlay.setProps({ layers });
   }, [overlay, fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
