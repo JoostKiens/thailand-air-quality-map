@@ -94,12 +94,12 @@ const BITMAP_BOUNDS: [number, number, number, number] = [
 
 // Map a PM2.5 value to an RGBA tuple for canvas pixel writing.
 function pm25ToRgba(pm25: number): RGBA {
-  if (pm25 <= 12.0) return [34, 197, 94, 180];
-  if (pm25 <= 35.4) return [234, 179, 8, 180];
-  if (pm25 <= 55.4) return [249, 115, 22, 180];
-  if (pm25 <= 150.4) return [239, 68, 68, 180];
-  if (pm25 <= 250.4) return [168, 85, 247, 180];
-  return [190, 18, 60, 180];
+  if (pm25 <= 12.0) return [34, 197, 94, 120];
+  if (pm25 <= 35.4) return [234, 179, 8, 120];
+  if (pm25 <= 55.4) return [249, 115, 22, 120];
+  if (pm25 <= 150.4) return [239, 68, 68, 120];
+  if (pm25 <= 250.4) return [168, 85, 247, 120];
+  return [190, 18, 60, 120];
 }
 
 // Bilinearly interpolate between four RGBA corner colors.

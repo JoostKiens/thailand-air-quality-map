@@ -124,8 +124,14 @@ export async function runAqiIngest(date?: string): Promise<{
     }
   }
 
-  // Invalidate Redis cache so next API request re-fetches fresh data from Supabase
-  await Promise.all(PARAMETERS.map((p) => redis.del(`measurements:latest:${p}`)));
+  // Invalidate Redis cache so next API request re-fetches fresh data from Supabase.
+  // Keys follow the pattern measurements:latest:{param}:{date|current}.
+  await Promise.all(
+    PARAMETERS.flatMap((p) => [
+      redis.del(`measurements:latest:${p}:current`),
+      redis.del(`measurements:latest:${p}:${targetDate}`),
+    ]),
+  );
 
   console.log('[aqi-ingest] Done (duplicates silently skipped)');
   return { stationsUpserted: stationRows.length, measurementsInserted: measurementRows.length };
