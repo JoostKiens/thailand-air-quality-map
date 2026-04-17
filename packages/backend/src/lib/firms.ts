@@ -1,4 +1,4 @@
-const BBOX = '92,1,115,28'; // west,south,east,north — covers Myanmar, Thailand, Laos, Cambodia, Malaysia
+const BBOX = '89,1,114,30'; // west,south,east,north — matches viewport MAX_BOUNDS
 
 export interface FirmsRow {
   detectedAt: string; // ISO 8601 UTC

@@ -1,9 +1,9 @@
 """
-Generate a pre-merged, simplified land mask for the PM2.5 grid layer.
+Generate a land mask for the PM2.5 grid layer covering the full viewport bbox.
 
-Downloads Natural Earth 10m country boundaries, unions the 5 relevant countries
-(THA, MMR, LAO, KHM, VNM) into a single polygon, simplifies at 0.01° tolerance,
-and writes the result as a GeoJSON FeatureCollection with one Feature.
+Downloads Natural Earth 50m land polygons (coastline-based, not country borders),
+clips to the viewport bbox [89,1,114,30], unions into a single geometry, simplifies
+at 0.01° tolerance, and writes the result as a GeoJSON FeatureCollection.
 
 Run once from the repo root:
     pip install -r scripts/requirements.txt
@@ -17,14 +17,15 @@ import sys
 from pathlib import Path
 
 import requests
-from shapely.geometry import shape, mapping
+from shapely.geometry import box, shape, mapping
 from shapely.ops import unary_union
 
 URL = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector"
-    "/master/geojson/ne_10m_admin_0_countries.geojson"
+    "/master/geojson/ne_50m_land.geojson"
 )
-TARGET_COUNTRIES = {"THA", "MMR", "LAO", "KHM", "VNM"}
+# Must match viewport MAX_BOUNDS in MapView.tsx
+CLIP_BBOX = (89, 1, 114, 30)  # west, south, east, north
 SIMPLIFY_TOLERANCE = 0.01  # degrees (~1 km); matches screen resolution at zoom 5-7
 OUTPUT = Path(__file__).parent.parent / "packages/frontend/src/data/sea-land-mask.json"
 
@@ -41,27 +42,31 @@ def count_vertices(geom) -> int:
 
 
 def main() -> None:
-    print(f"Downloading NE 10m countries from Natural Earth…")
+    print(f"Downloading NE 50m land polygons from Natural Earth…")
     resp = requests.get(URL, timeout=120)
     resp.raise_for_status()
     data = resp.json()
     print(f"  Downloaded {len(resp.content) / 1024:.0f} KB, {len(data['features'])} features total")
 
-    # Filter to the 5 countries
-    geometries = []
-    for feature in data["features"]:
-        iso = feature.get("properties", {}).get("ADM0_A3")
-        if iso in TARGET_COUNTRIES:
-            geometries.append(shape(feature["geometry"]))
-    print(f"  Matched {len(geometries)} features for {sorted(TARGET_COUNTRIES)}")
+    clip_box = box(*CLIP_BBOX)
 
-    if len(geometries) != len(TARGET_COUNTRIES):
-        print("ERROR: did not find all 5 countries — check ADM0_A3 field", file=sys.stderr)
+    # Clip each feature to the viewport bbox and collect non-empty results
+    clipped = []
+    for feature in data["features"]:
+        geom = shape(feature["geometry"])
+        if geom.intersects(clip_box):
+            intersection = geom.intersection(clip_box)
+            if not intersection.is_empty:
+                clipped.append(intersection)
+    print(f"  Features intersecting bbox {CLIP_BBOX}: {len(clipped)}")
+
+    if not clipped:
+        print("ERROR: no land features found within bbox", file=sys.stderr)
         sys.exit(1)
 
     # Union into a single polygon
     print("Merging with unary_union…")
-    merged = unary_union(geometries)
+    merged = unary_union(clipped)
     vertices_before = count_vertices(merged)
     print(f"  Merged geometry type: {merged.geom_type}")
     print(f"  Vertices before simplification: {vertices_before:,}")

@@ -5,15 +5,15 @@ const LNG_POINTS = [92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114];
 const LAT_POINTS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27];
 
 // 0.4° grid for PM2.5 — matches Open-Meteo CAMS native resolution
-// bbox [92,5,110,28] → 46 × 58 = 2,668 points
+// bbox [89,1,114,30] → 63 × 73 = 4,599 points; cell edges align to viewport corners
 const AQ_STEP = 0.4;
 const AQ_LNG_POINTS = Array.from(
-  { length: 46 },
-  (_, i) => Math.round((92 + i * AQ_STEP) * 10) / 10,
+  { length: 63 },
+  (_, i) => Math.round((89 + i * AQ_STEP) * 10) / 10,
 );
-const AQ_LAT_POINTS = Array.from({ length: 58 }, (_, i) => Math.round((5 + i * AQ_STEP) * 10) / 10);
+const AQ_LAT_POINTS = Array.from({ length: 73 }, (_, i) => Math.round((1 + i * AQ_STEP) * 10) / 10);
 
-// 300 locations per request keeps URL under ~3.5KB and reduces total requests to 9
+// 300 locations per request keeps URL under ~3.5KB and reduces total requests to 16
 const AQ_BATCH_SIZE = 300;
 const AQ_BATCH_CONCURRENCY = 1; // sequential — minimises request count against rate limits
 const AQ_RETRY_DELAYS_MS = [5_000, 15_000, 30_000]; // backoff on 429

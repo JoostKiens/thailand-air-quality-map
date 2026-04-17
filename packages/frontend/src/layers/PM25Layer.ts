@@ -72,24 +72,24 @@ export function createLandMaskLayer(beforeId?: string) {
 
 // Grid geometry — must match backend openmeteo.ts AQ grid constants.
 const AQ_STEP = 0.4;
-const AQ_LNG_MIN = 92.0;
-const AQ_LAT_MIN = 5.0;
-const AQ_LNG_COUNT = 46;
-const AQ_LAT_COUNT = 58;
-const AQ_LNG_MAX = AQ_LNG_MIN + (AQ_LNG_COUNT - 1) * AQ_STEP; // 110.0
-const AQ_LAT_MAX = AQ_LAT_MIN + (AQ_LAT_COUNT - 1) * AQ_STEP; // 27.8
+const AQ_LNG_MIN = 89.0;
+const AQ_LAT_MIN = 1.0;
+const AQ_LNG_COUNT = 63;
+const AQ_LAT_COUNT = 73;
+const AQ_LNG_MAX = AQ_LNG_MIN + (AQ_LNG_COUNT - 1) * AQ_STEP; // 113.8
+const AQ_LAT_MAX = AQ_LAT_MIN + (AQ_LAT_COUNT - 1) * AQ_STEP; //  29.8
 
 // Canvas pixels per grid cell — higher = smoother gradients, more memory.
 const PX_PER_CELL = 10;
-const CANVAS_W = AQ_LNG_COUNT * PX_PER_CELL; // 460
-const CANVAS_H = AQ_LAT_COUNT * PX_PER_CELL; // 580
+const CANVAS_W = AQ_LNG_COUNT * PX_PER_CELL; // 630
+const CANVAS_H = AQ_LAT_COUNT * PX_PER_CELL; // 730
 
 // BitmapLayer geographic bounds: outer edges of the outermost cells.
 const BITMAP_BOUNDS: [number, number, number, number] = [
-  AQ_LNG_MIN - AQ_STEP / 2, // 91.8 west
-  AQ_LAT_MIN - AQ_STEP / 2, //  4.8 south
-  AQ_LNG_MAX + AQ_STEP / 2, // 110.2 east
-  AQ_LAT_MAX + AQ_STEP / 2, //  28.0 north
+  AQ_LNG_MIN - AQ_STEP / 2, // 88.8 west
+  AQ_LAT_MIN - AQ_STEP / 2, //  0.8 south
+  AQ_LNG_MAX + AQ_STEP / 2, // 114.0 east
+  AQ_LAT_MAX + AQ_STEP / 2, //  30.0 north
 ];
 
 // Map a PM2.5 value to an RGBA tuple for canvas pixel writing.

@@ -18,7 +18,7 @@ const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
 const ZOOM = 5.5;
 const MIN_ZOOM = 4.0;
-// Data bbox [92,5,110,28] with 3° padding on each side
+// Viewport bbox [89,1,114,30] — all data layers align to this extent
 const MAX_BOUNDS: mapboxgl.LngLatBoundsLike = [89, 1, 114, 30];
 
 // Find the first Mapbox layer that represents admin boundaries or labels.
