@@ -4,10 +4,19 @@ import type { WindVector, PM25GridPoint } from '@thailand-aq/types';
 const LNG_POINTS = [92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114];
 const LAT_POINTS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27];
 
-// 1° grid for PM2.5 — extended west to 92°E to cover all of Myanmar
-// bbox [92,5,110,28] → 19 × 24 = 456 points
-const AQ_LNG_POINTS = Array.from({ length: 19 }, (_, i) => 92 + i); // [92..110]
-const AQ_LAT_POINTS = Array.from({ length: 24 }, (_, i) => 5 + i); // [5..28]
+// 0.4° grid for PM2.5 — matches Open-Meteo CAMS native resolution
+// bbox [92,5,110,28] → 46 × 58 = 2,668 points
+const AQ_STEP = 0.4;
+const AQ_LNG_POINTS = Array.from(
+  { length: 46 },
+  (_, i) => Math.round((92 + i * AQ_STEP) * 10) / 10,
+);
+const AQ_LAT_POINTS = Array.from({ length: 58 }, (_, i) => Math.round((5 + i * AQ_STEP) * 10) / 10);
+
+// 300 locations per request keeps URL under ~3.5KB and reduces total requests to 9
+const AQ_BATCH_SIZE = 300;
+const AQ_BATCH_CONCURRENCY = 1; // sequential — minimises request count against rate limits
+const AQ_RETRY_DELAYS_MS = [5_000, 15_000, 30_000]; // backoff on 429
 
 interface OpenMeteoResult {
   latitude: number;
@@ -68,17 +77,11 @@ interface OpenMeteoAQResult {
   };
 }
 
-export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]> {
-  const lats: number[] = [];
-  const lngs: number[] = [];
-
-  for (const lat of AQ_LAT_POINTS) {
-    for (const lng of AQ_LNG_POINTS) {
-      lats.push(lat);
-      lngs.push(lng);
-    }
-  }
-
+async function fetchAQBatch(
+  lats: number[],
+  lngs: number[],
+  date: string,
+): Promise<PM25GridPoint[]> {
   const params = new URLSearchParams({
     latitude: lats.join(','),
     longitude: lngs.join(','),
@@ -88,14 +91,25 @@ export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]
     timezone: 'UTC',
   });
 
-  const res = await fetch(
-    `https://air-quality-api.open-meteo.com/v1/air-quality?${params.toString()}`,
-  );
-  if (!res.ok) {
-    throw new Error(`Open-Meteo Air Quality API error: ${res.status} ${res.statusText}`);
+  const url = `https://air-quality-api.open-meteo.com/v1/air-quality?${params.toString()}`;
+
+  let res: Response | undefined;
+  for (let attempt = 0; attempt <= AQ_RETRY_DELAYS_MS.length; attempt++) {
+    res = await fetch(url);
+    if (res.status !== 429) break;
+    const delay = AQ_RETRY_DELAYS_MS[attempt];
+    if (delay === undefined) break;
+    console.warn(`[openmeteo] 429 on AQ batch, retrying in ${delay}ms...`);
+    await new Promise((r) => setTimeout(r, delay));
   }
 
-  const results = (await res.json()) as OpenMeteoAQResult[];
+  if (!res?.ok) {
+    throw new Error(`Open-Meteo Air Quality API error: ${res?.status} ${res?.statusText}`);
+  }
+
+  // API returns a single object when one location is requested, array for multiple.
+  const raw = (await res.json()) as OpenMeteoAQResult | OpenMeteoAQResult[];
+  const results = Array.isArray(raw) ? raw : [raw];
 
   return results
     .map((loc) => {
@@ -105,6 +119,39 @@ export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]
       return { lat: loc.latitude, lng: loc.longitude, pm25: Math.round(mean * 10) / 10 };
     })
     .filter((p): p is PM25GridPoint => p !== null);
+}
+
+export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]> {
+  // Build flat list of all grid points
+  const allLats: number[] = [];
+  const allLngs: number[] = [];
+  for (const lat of AQ_LAT_POINTS) {
+    for (const lng of AQ_LNG_POINTS) {
+      allLats.push(lat);
+      allLngs.push(lng);
+    }
+  }
+
+  // Split into batches
+  const batches: Array<{ lats: number[]; lngs: number[] }> = [];
+  for (let i = 0; i < allLats.length; i += AQ_BATCH_SIZE) {
+    batches.push({
+      lats: allLats.slice(i, i + AQ_BATCH_SIZE),
+      lngs: allLngs.slice(i, i + AQ_BATCH_SIZE),
+    });
+  }
+
+  // Run batches with limited concurrency
+  const results: PM25GridPoint[] = [];
+  for (let i = 0; i < batches.length; i += AQ_BATCH_CONCURRENCY) {
+    const chunk = batches.slice(i, i + AQ_BATCH_CONCURRENCY);
+    const chunkResults = await Promise.all(chunk.map((b) => fetchAQBatch(b.lats, b.lngs, date)));
+    for (const points of chunkResults) {
+      results.push(...points);
+    }
+  }
+
+  return results;
 }
 
 // Find the index of the latest past hour in the time array

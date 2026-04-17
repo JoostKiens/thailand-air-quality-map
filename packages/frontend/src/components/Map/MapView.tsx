@@ -6,10 +6,11 @@ import { useLayerStore } from '../../store/layerStore';
 import { useFires } from '../../hooks/useFires';
 import { useAQI } from '../../hooks/useAQI';
 import { useAQGrid } from '../../hooks/useAQGrid';
+import { AQILegend } from './AQILegend';
 import { createFiresLayer } from '../../layers/FiresLayer';
 import {
   createLandMaskLayer,
-  createPM25HeatmapLayer,
+  createPM25BitmapLayer,
   createPM25StationsLayer,
 } from '../../layers/PM25Layer';
 
@@ -47,7 +48,7 @@ export function MapView() {
     const layers = [];
     if (pm25Config.visible) {
       layers.push(createLandMaskLayer(beforeId)); // mask layer must precede the masked layer
-      if (aqGrid) layers.push(createPM25HeatmapLayer(aqGrid, beforeId));
+      if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
       if (aqi) layers.push(createPM25StationsLayer(aqi, beforeId));
     }
     if (firesConfig.visible && fires) {
@@ -91,5 +92,10 @@ export function MapView() {
     };
   }, []);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {pm25Config.visible && <AQILegend />}
+    </div>
+  );
 }
