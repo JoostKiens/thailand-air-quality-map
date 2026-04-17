@@ -109,7 +109,7 @@ keeps API keys server-side.
 ### NASA FIRMS — active fire points (VIIRS)
 
 - Source: `https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/VIIRS_SNPP_NRT/{bbox}/1/{date}`
-- Bounding box: `97,5,110,28` (covers Thailand, Myanmar, Laos, Cambodia)
+- Bounding box: `89,1,114,30` — matches viewport MAX_BOUNDS (covers Myanmar, Thailand, Laos, Cambodia, Vietnam, Malaysia, and partial India/China/Bangladesh)
 - Schedule: every 3 hours (satellite pass cadence)
 - Storage: Supabase `fire_points` table (PostGIS point geometry)
 - Cache: Redis with 3h TTL for latest 24h slice
@@ -124,8 +124,8 @@ keeps API keys server-side.
 - Endpoints: `/locations` (station list) + `/measurements` (time series)
 - Parameters: `pm25` only (primary pollutant for this project)
 - Schedule: every 1 hour
-- Storage: Supabase `aqi_readings` table
-- Cache: Redis with 1h TTL
+- Storage: Supabase `stations` + `measurements` tables
+- Cache: Redis with 1h TTL, key `measurements:latest:{param}:{date|current}`
 - License: CC BY 4.0 — attribution required in UI
 - Required: free API key from https://explore.openaq.org/register
 - Note: some underlying Thai monitoring station data may have its own attribution
@@ -146,13 +146,13 @@ keeps API keys server-side.
 
 - Source: `https://air-quality-api.open-meteo.com/v1/air-quality`
 - Parameters: `pm2_5` (hourly), daily mean computed per grid point
-- Grid: 1° spacing over bbox [92,5,110,28] → 19 × 24 = **456 points** per date (extended west to 92°E to cover all of Myanmar)
+- Grid: 0.4° spacing over bbox [89,1,114,30] → 63 × 73 = **4,599 points** per date; fetched in 16 batches of 300 (sequential, with 429 retry backoff)
 - No API key required
 - Schedule: every 6 hours (and on-demand for historical dates)
 - Storage: Redis only, key `aq:pm25:{YYYY-MM-DD}`, TTL 48h
 - License: CC BY 4.0 — same attribution as wind (Open-Meteo footer link covers both)
 - Data source: CAMS (Copernicus Atmosphere Monitoring Service) global model, ~11km resolution
-- Render as: `PolygonLayer` with 1°×1° rectangular cells colored by absolute AQI µg/m³ thresholds; clipped to land via `MaskExtension` using Natural Earth 50m country polygons (`src/data/sea-countries.json`)
+- Render as: `BitmapLayer` — grid painted onto an offscreen canvas (630×730 px, 10 px/cell) with bilinear color interpolation between cells, then passed as a texture; clipped to land via `MaskExtension` + `SolidPolygonLayer` using Natural Earth 50m land polygons clipped to viewport (`src/data/sea-land-mask.json`); land mask regenerated via `scripts/generate-land-mask.py`
 - Script: `pnpm --filter backend run ingest:aq YYYY-MM-DD`
 
 ### Mapbox Traffic
@@ -252,7 +252,7 @@ The `aqi_readings` table from earlier designs has been replaced by the
 ## API routes (Fastify backend)
 
 All routes return JSON. All accept a `bbox` query param where spatial filtering is
-needed (format: `west,south,east,north`, default: `92,1,115,28`).
+needed (format: `west,south,east,north`, default: `89,1,114,30`).
 
 ```
 GET /api/fires?date=YYYY-MM-DD&bbox=...
@@ -278,7 +278,7 @@ GET /api/wind/current?bbox=...
   Returns current wind grid from Redis only (no DB fallback — refetch if missing).
 
 GET /api/aq/pm25?date=YYYY-MM-DD&bbox=...
-  Returns Open-Meteo CAMS gridded PM2.5 for a specific date (456 points at 1° grid, bbox [92,5,110,28]).
+  Returns Open-Meteo CAMS gridded PM2.5 for a specific date (up to 4,599 points at 0.4° grid, bbox [89,1,114,30]).
   Redis first (key: aq:pm25:{date}, TTL 48h); on miss fetches live from Open-Meteo.
 
 GET /health
@@ -352,9 +352,8 @@ export interface PM25GridPoint {
 }
 ```
 
-Note: the `AQIReading` interface from earlier designs has been replaced by the
-`Station` + `Measurement` pair. Update any references to `AQIReading` accordingly.
-Also rename `packages/types/src/aqi.ts` to `measurement.ts` and add `station.ts`.
+Note: `AQIReading` (earlier design) is gone. The current model is `Station` + `Measurement`.
+Types live in `packages/types/src/measurement.ts` and `packages/types/src/station.ts`.
 
 ---
 
@@ -407,7 +406,7 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 
 | Layer         | Deck.gl type                     | Key props                                             |
 | ------------- | -------------------------------- | ----------------------------------------------------- |
-| PM2.5 heatmap | `PolygonLayer` + `MaskExtension` | Open-Meteo CAMS grid, 1°×1° cells, `getFillColor: d => aqiColor(d.pm25)`, clipped to land via Natural Earth 50m mask |
+| PM2.5 heatmap | `BitmapLayer` + `MaskExtension` | Open-Meteo CAMS grid, 0.4° cells, bilinearly interpolated onto 630×730 px canvas, clipped to land via `SolidPolygonLayer` mask (`sea-land-mask.json`) |
 | PM2.5 stations| `ScatterplotLayer`               | OpenAQ ground stations, colored by `aqiColor(d.value)`, 5px radius |
 | Fire points   | `ScatterplotLayer`               | `getRadius: d => 375 + sqrt(frp)*150` meters, color: orange `#f97316` |
 | Wind vectors  | `ScatterplotLayer` + `PathLayer` | arrow glyphs, direction from `directionDeg`           |
@@ -434,7 +433,7 @@ AQI color scale (US EPA) — thresholds are raw **PM2.5 µg/m³**, not AQI index
 - Default center: `[101.0, 15.5]` (Thailand center)
 - Default zoom: `5.5`
 - Mapbox style: dark custom style (use `mapbox://styles/mapbox/dark-v11` as base)
-- Bounding box for data: `[97, 5, 110, 28]` (west, south, east, north)
+- Bounding box for data: `[89, 1, 114, 30]` (west, south, east, north) — all layers and DEFAULT_BBOX align to this
 - Countries to label: Thailand, Myanmar, Laos, Cambodia, Vietnam (contextual only)
 
 ---
@@ -506,6 +505,7 @@ pnpm --filter frontend dev
 pnpm --filter backend run ingest:firms
 pnpm --filter backend run ingest:aqi
 pnpm --filter backend run ingest:wind
+pnpm --filter backend run ingest:aq YYYY-MM-DD   # Open-Meteo CAMS PM2.5 grid
 
 # Type-check all packages
 pnpm typecheck
@@ -542,10 +542,12 @@ pnpm lint
   the wind is coming FROM (meteorological convention). To draw an arrow showing where
   wind is going, add 180 degrees before computing dx/dy.
 
-- The PM2.5 grid uses `PolygonLayer` (not `HeatmapLayer`) because `HeatmapLayer` normalizes
+- The PM2.5 grid uses `BitmapLayer` (not `HeatmapLayer`) because `HeatmapLayer` normalizes
   weights relative to the viewport — the min value always maps to the first color regardless
-  of absolute µg/m³, producing incorrect AQI colors. `PolygonLayer` with direct `getFillColor`
-  uses the actual EPA thresholds. Filter data server-side; only send the selected date's grid.
+  of absolute µg/m³, producing incorrect AQI colors. The BitmapLayer approach paints each
+  grid cell directly with EPA-threshold colors and bilinearly interpolates between neighbors,
+  giving smooth gradients while preserving absolute color accuracy. Filter data server-side;
+  only send the selected date's grid.
 
 - Use `geography(Point, 4326)` not `geometry` in PostGIS for distance calculations
   in meters without projection math.
