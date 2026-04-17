@@ -4,36 +4,14 @@ import { MaskExtension } from '@deck.gl/extensions';
 import type { PM25GridPoint } from '@thailand-aq/types';
 import type { LatestMeasurement } from '../hooks/useAQI';
 import seaCountries from '../data/sea-land-mask.json';
+import { pm25ToRgba, type RGBA } from '../lib/aqiColors';
 
-type RGBA = [number, number, number, number];
+export { AQI_CATEGORIES } from '../lib/aqiColors';
+
 type Ring = number[][];
 type CountryFeature = {
   geometry: { type: string; coordinates: Ring[] | Ring[][] };
 };
-
-// Thresholds are raw PM2.5 µg/m³ concentrations, NOT AQI index values.
-// Source: US EPA PM2.5 NAAQS breakpoints.
-export const AQI_CATEGORIES = [
-  { label: 'Good', range: '0–12', rgb: [34, 197, 94] as [number, number, number] },
-  { label: 'Moderate', range: '12–35', rgb: [234, 179, 8] as [number, number, number] },
-  {
-    label: 'Unhealthy (sensitive)',
-    range: '35–55',
-    rgb: [249, 115, 22] as [number, number, number],
-  },
-  { label: 'Unhealthy', range: '55–150', rgb: [239, 68, 68] as [number, number, number] },
-  { label: 'Very unhealthy', range: '150–250', rgb: [168, 85, 247] as [number, number, number] },
-  { label: 'Hazardous', range: '250+', rgb: [190, 18, 60] as [number, number, number] },
-] as const;
-
-function aqiColor(pm25: number): RGBA {
-  if (pm25 <= 12.0) return [34, 197, 94, 120];
-  if (pm25 <= 35.4) return [234, 179, 8, 120];
-  if (pm25 <= 55.4) return [249, 115, 22, 120];
-  if (pm25 <= 150.4) return [239, 68, 68, 120];
-  if (pm25 <= 250.4) return [168, 85, 247, 120];
-  return [190, 18, 60, 120];
-}
 
 // Flatten Polygon and MultiPolygon features into individual outer rings.
 // SolidPolygonLayer needs one ring per data item.
@@ -55,9 +33,9 @@ function extractRings(features: CountryFeature[]): Ring[] {
 // Pre-extract rings once at module load time.
 const LAND_RINGS = extractRings((seaCountries as { features: CountryFeature[] }).features);
 
-// SolidPolygonLayer with operation:'mask' — renders TH/MM/LA/KH/VN land areas into
-// the mask buffer. Used by createPM25HeatmapLayer to clip grid cells to land.
-// Must appear in the layers array before the masked layer.
+// SolidPolygonLayer with operation:'mask' — renders land areas into the mask buffer.
+// Used by createPM25BitmapLayer to clip the heatmap to land. Must appear in the
+// layers array before the masked layer.
 export function createLandMaskLayer(beforeId?: string) {
   const props: SolidPolygonLayerProps<Ring> = {
     id: 'land-mask',
@@ -92,15 +70,10 @@ const BITMAP_BOUNDS: [number, number, number, number] = [
   AQ_LAT_MAX + AQ_STEP / 2, //  30.0 north
 ];
 
-// Map a PM2.5 value to an RGBA tuple for canvas pixel writing.
-function pm25ToRgba(pm25: number): RGBA {
-  if (pm25 <= 12.0) return [34, 197, 94, 120];
-  if (pm25 <= 35.4) return [234, 179, 8, 120];
-  if (pm25 <= 55.4) return [249, 115, 22, 120];
-  if (pm25 <= 150.4) return [239, 68, 68, 120];
-  if (pm25 <= 250.4) return [168, 85, 247, 120];
-  return [190, 18, 60, 120];
-}
+// Alpha values — heatmap is more translucent so the basemap shows through;
+// stations are more opaque so individual dots remain legible.
+const HEATMAP_ALPHA = 60;
+const STATION_ALPHA = 200;
 
 // Bilinearly interpolate between four RGBA corner colors.
 function lerpColor(c00: RGBA, c10: RGBA, c01: RGBA, c11: RGBA, tx: number, ty: number): RGBA {
@@ -114,8 +87,7 @@ function lerpColor(c00: RGBA, c10: RGBA, c01: RGBA, c11: RGBA, tx: number, ty: n
 }
 
 // BitmapLayer — bilinearly-interpolated PM2.5 grid rendered onto an offscreen canvas.
-// Smooth color gradients replace the blocky per-cell PolygonLayer.
-// MaskExtension clips to land (same land-mask layer required before this in the stack).
+// MaskExtension clips to land (land-mask layer must appear before this in the stack).
 export function createPM25BitmapLayer(data: PM25GridPoint[], beforeId?: string) {
   // Build a 2-D grid lookup: grid[latIdx][lngIdx] = pm25 | null
   const grid: (number | null)[][] = Array.from({ length: AQ_LAT_COUNT }, () =>
@@ -171,10 +143,10 @@ export function createPM25BitmapLayer(data: PM25GridPoint[], beforeId?: string) 
       // Fall back missing corners to any available neighbour so edges stay coloured.
       const fb = available[0];
       const [r, g, b, a] = lerpColor(
-        pm25ToRgba(v00 ?? fb),
-        pm25ToRgba(v10 ?? fb),
-        pm25ToRgba(v01 ?? fb),
-        pm25ToRgba(v11 ?? fb),
+        pm25ToRgba(v00 ?? fb, HEATMAP_ALPHA),
+        pm25ToRgba(v10 ?? fb, HEATMAP_ALPHA),
+        pm25ToRgba(v01 ?? fb, HEATMAP_ALPHA),
+        pm25ToRgba(v11 ?? fb, HEATMAP_ALPHA),
         tx,
         ty,
       );
@@ -204,7 +176,7 @@ export function createPM25StationsLayer(data: LatestMeasurement[], beforeId?: st
     ...({ beforeId } as object),
     data,
     getPosition: (d) => [d.lng, d.lat],
-    getFillColor: (d) => aqiColor(d.value),
+    getFillColor: (d) => pm25ToRgba(d.value, STATION_ALPHA),
     getLineColor: [255, 255, 255, 180],
     getRadius: 5,
     radiusUnits: 'pixels',

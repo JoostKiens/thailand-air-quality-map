@@ -1,4 +1,4 @@
-import { AQI_CATEGORIES } from '../../layers/PM25Layer';
+import { AQI_CATEGORIES } from '../../lib/aqiColors';
 
 export function AQILegend() {
   return (

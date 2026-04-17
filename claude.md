@@ -415,16 +415,18 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
 not return `country_id`, so per-country coloring is not available.
 
-AQI color scale (US EPA) — thresholds are raw **PM2.5 µg/m³**, not AQI index values:
+AQI color scale (US EPA official) — thresholds are raw **PM2.5 µg/m³**, not AQI index values.
+Colors are defined once in `packages/frontend/src/lib/aqiColors.ts` and shared by both
+the heatmap (`BitmapLayer`) and station dots (`ScatterplotLayer`).
 
-| Category | PM2.5 µg/m³ | Color |
-|---|---|---|
-| Good | 0–12.0 | `#22c55e` |
-| Moderate | 12.1–35.4 | `#eab308` |
-| Unhealthy for sensitive groups | 35.5–55.4 | `#f97316` |
-| Unhealthy | 55.5–150.4 | `#ef4444` |
-| Very unhealthy | 150.5–250.4 | `#a855f7` |
-| Hazardous | 250.5+ | `#be123c` |
+| Category | PM2.5 µg/m³ | Hex | RGB |
+|---|---|---|---|
+| Good | 0–12.0 | `#00e400` | `[0, 228, 0]` |
+| Moderate | 12.1–35.4 | `#ffff00` | `[255, 255, 0]` |
+| Unhealthy (sensitive) | 35.5–55.4 | `#ff7e00` | `[255, 126, 0]` |
+| Unhealthy | 55.5–150.4 | `#ff0000` | `[255, 0, 0]` |
+| Very unhealthy | 150.5–250.4 | `#8f3f97` | `[143, 63, 151]` |
+| Hazardous | 250.5+ | `#7e0023` | `[126, 0, 35]` |
 
 ---
 
