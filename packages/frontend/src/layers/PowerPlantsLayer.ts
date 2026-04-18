@@ -57,7 +57,7 @@ export function createPowerPlantsLayer(
     opacity,
     pickable: true,
     onHover,
-    parameters: { depthCompare: 'always' as const },
+    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ beforeId } as object),
   });
 }

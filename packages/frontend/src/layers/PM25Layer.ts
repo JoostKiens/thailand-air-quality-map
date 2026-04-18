@@ -44,6 +44,7 @@ export function createLandMaskLayer(beforeId?: string) {
     getPolygon: (ring) => ring as unknown as Position[],
     filled: true,
     operation: 'mask',
+    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ beforeId } as object),
   };
   return new SolidPolygonLayer<Ring>(props);
@@ -165,6 +166,7 @@ export function createPM25BitmapLayer(data: PM25GridPoint[], beforeId?: string) 
     id: 'pm25-bitmap',
     image: canvas,
     bounds: BITMAP_BOUNDS,
+    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ extensions: [maskExt], maskId: 'land-mask', beforeId } as object),
   });
 }
@@ -234,6 +236,7 @@ export function createPM25StationsLayers(
     getLineWidth: 1.5,
     stroked: true,
     pickable: true,
+    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ beforeId } as object),
   });
 
@@ -251,6 +254,7 @@ export function createPM25StationsLayers(
     fontFamily: 'sans-serif',
     getTextAnchor: 'middle',
     getAlignmentBaseline: 'center',
+    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ beforeId } as object),
   });
 

@@ -16,6 +16,7 @@ const RINGS = [OUTER_GLOW, MID_HALO, INNER_CORE] as const;
 // Overlapping halos accumulate — dense fire clusters bloom brighter.
 const ADDITIVE_BLEND = {
   depthCompare: 'always',
+  depthWriteEnabled: false,
   blend: true,
   blendColorSrcFactor: 'src-alpha',
   blendColorDstFactor: 'one',
