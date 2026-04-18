@@ -9,6 +9,7 @@ import { useAQGrid } from '../../hooks/useAQGrid';
 import { AQILegend } from './AQILegend';
 import { VIEWPORT_BBOX } from '../../lib/bbox';
 import { createFiresLayer } from '../../layers/FiresLayer';
+
 import {
   createLandMaskLayer,
   createPM25BitmapLayer,
@@ -52,7 +53,7 @@ export function MapView() {
       if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
     }
     if (firesConfig.visible && fires) {
-      layers.push(createFiresLayer(fires, firesConfig.opacity, zoom, beforeId));
+      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, beforeId));
     }
     if (pm25Config.visible && aqi) {
       layers.push(...createPM25StationsLayers(aqi, zoom)); // no beforeId — renders above all Mapbox labels
@@ -97,6 +98,7 @@ export function MapView() {
     });
 
     map.on('zoomend', () => {
+      console.log('zoomend', map.getZoom());
       if (mounted) setZoom(map.getZoom());
     });
 
