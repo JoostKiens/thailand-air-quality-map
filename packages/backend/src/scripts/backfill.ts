@@ -1,8 +1,6 @@
 /**
- * Backfill script — fetches the last N days of fire, AQ grid, and AQI measurement
- * data and writes it to Supabase / Redis.
- *
- * Wind is excluded: Open-Meteo forecast API has no historical mode.
+ * Backfill script — fetches the last N days of fire, AQ grid, AQI measurement,
+ * and wind data and writes it to Supabase / Redis.
  *
  * Usage:
  *   pnpm --filter backend backfill              # last 10 days (default)
@@ -12,6 +10,7 @@
 import { runFirmsIngest } from '../jobs/firms-ingest.js';
 import { runAqiIngest } from '../jobs/aqi-ingest.js';
 import { runAqIngest } from '../jobs/aq-ingest.js';
+import { runWindIngest } from '../jobs/wind-ingest.js';
 
 const DAYS = parseDaysArg() ?? 10;
 const DAY_PAUSE_MS = 2_000; // between days — gives OpenAQ rate-limit window room to breathe
@@ -73,6 +72,7 @@ type DayResult = {
   firms: string;
   aq: string;
   aqi: string;
+  wind: string;
   ok: boolean;
 };
 
@@ -94,7 +94,7 @@ async function main() {
 
   for (const date of dates) {
     console.log(`\n── ${date} ──`);
-    const result: DayResult = { date, firms: '—', aq: '—', aqi: '—', ok: true };
+    const result: DayResult = { date, firms: '—', aq: '—', aqi: '—', wind: '—', ok: true };
 
     // 1. FIRMS fire detections
     try {
@@ -114,7 +114,16 @@ async function main() {
       result.ok = false;
     }
 
-    // 3. OpenAQ measurements (slowest — inner per-sensor retry already handles 429)
+    // 3. Wind grid (Open-Meteo archive API — fast, no rate limit concerns)
+    try {
+      const { points } = await runWindIngest(date);
+      result.wind = `${points} vectors`;
+    } catch (err) {
+      result.wind = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      result.ok = false;
+    }
+
+    // 4. OpenAQ measurements (slowest — inner per-sensor retry already handles 429)
     try {
       const { stationsUpserted, measurementsInserted } = await callWithRateLimit(
         `aqi ${date}`,
@@ -134,17 +143,17 @@ async function main() {
   }
 
   // Summary table
-  console.log('\n────────────────────────────────────────────────────────────────');
-  console.log(' Date         FIRMS                  AQ grid     AQI');
-  console.log('────────────────────────────────────────────────────────────────');
+  console.log('\n──────────────────────────────────────────────────────────────────────────────');
+  console.log(' Date         FIRMS                  AQ grid     Wind          AQI');
+  console.log('──────────────────────────────────────────────────────────────────────────────');
   for (const r of results) {
     const status = r.ok ? '✓' : '✗';
     console.log(
-      `${status} ${r.date}  firms: ${r.firms.padEnd(18)}  aq: ${r.aq.padEnd(10)}  aqi: ${r.aqi}`,
+      `${status} ${r.date}  firms: ${r.firms.padEnd(18)}  aq: ${r.aq.padEnd(10)}  wind: ${r.wind.padEnd(12)}  aqi: ${r.aqi}`,
     );
   }
   const succeeded = results.filter((r) => r.ok).length;
-  console.log('────────────────────────────────────────────────────────────────');
+  console.log('──────────────────────────────────────────────────────────────────────────────');
   console.log(`Backfill complete. ${succeeded}/${results.length} days fully succeeded.\n`);
 
   process.exit(succeeded === results.length ? 0 : 1);

@@ -141,8 +141,8 @@ keeps API keys server-side.
 - Parameters: `windspeed_10m`, `winddirection_10m` on a grid over the bounding box
 - No API key required
 - Schedule: every 6 hours
-- Storage: Redis only (ephemeral, no historical value)
-- Cache: Redis with 6h TTL
+- Storage: Redis only (no DB — fetched on demand per date)
+- Cache: Redis with 6h TTL for today, 30 days for historical dates
 - License: CC BY 4.0 — attribution link required in UI footer
 - Render as: static arrow vectors (ScatterplotLayer or custom PathLayer in Deck.gl)
 
@@ -296,8 +296,11 @@ GET /api/measurements/history?station_id=...&parameter=pm25&hours=24
 GET /api/stations?bbox=...
   Returns all stations with their available parameters.
 
-GET /api/wind/current?bbox=...
-  Returns current wind grid from Redis only (no DB fallback — refetch if missing).
+GET /api/wind?date=YYYY-MM-DD&bbox=...
+  Returns wind vectors for the given date (defaults to today).
+  Redis cache key: wind:{date}. TTL: 6h for today, 30 days for historical.
+  On cache miss, fetches on demand from Open-Meteo (forecast API for today, archive API for past).
+  Today: current hour. Historical: 07:00 UTC (14:00 BKK — peak daytime convective transport).
 
 GET /api/aq/pm25?date=YYYY-MM-DD&bbox=...
   Returns Open-Meteo CAMS gridded PM2.5 for a specific date (up to 4,599 points at 0.4° grid, bbox [89,1,114,30]).

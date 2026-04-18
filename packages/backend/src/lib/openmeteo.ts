@@ -30,10 +30,20 @@ interface OpenMeteoResult {
   };
 }
 
-export async function fetchWindGrid(): Promise<WindVector[]> {
+// 07:00 UTC = 14:00 BKK — peak daytime convective mixing, best for smoke transport
+const HISTORICAL_HOUR_UTC = 7;
+
+export type FetchWindGridOptions = {
+  /** UTC calendar day (YYYY-MM-DD) used to decide forecast vs archive; must be one snapshot for the whole request. */
+  calendarDayUtc: string;
+};
+
+export async function fetchWindGridForDate(
+  date: string,
+  options: FetchWindGridOptions,
+): Promise<WindVector[]> {
   const lats: number[] = [];
   const lngs: number[] = [];
-
   for (const lat of LAT_POINTS) {
     for (const lng of LNG_POINTS) {
       lats.push(lat);
@@ -41,26 +51,34 @@ export async function fetchWindGrid(): Promise<WindVector[]> {
     }
   }
 
+  const isToday = date === options.calendarDayUtc;
+
+  const baseUrl = isToday
+    ? 'https://api.open-meteo.com/v1/forecast'
+    : 'https://archive-api.open-meteo.com/v1/archive';
+
   const params = new URLSearchParams({
     latitude: lats.join(','),
     longitude: lngs.join(','),
     hourly: 'windspeed_10m,winddirection_10m',
-    forecast_days: '1',
+    start_date: date,
+    end_date: date,
     timezone: 'UTC',
     wind_speed_unit: 'kmh',
   });
 
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+  const res = await fetch(`${baseUrl}?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Open-Meteo API error: ${res.status} ${res.statusText}`);
   }
 
   const results = (await res.json()) as OpenMeteoResult[];
-
   const nowUtc = Date.now();
 
   return results.map((loc) => {
-    const idx = currentHourIndex(loc.hourly.time, nowUtc);
+    const idx = isToday
+      ? currentHourIndex(loc.hourly.time, nowUtc)
+      : targetHourIndex(loc.hourly.time, date, HISTORICAL_HOUR_UTC);
     return {
       lat: loc.latitude,
       lng: loc.longitude,
@@ -163,6 +181,38 @@ function currentHourIndex(times: string[], nowMs: number): number {
     const t = new Date(times[i] + ':00Z').getTime();
     if (t <= nowMs) best = i;
     else break;
+  }
+  return best;
+}
+
+function parseOpenMeteoUtcMs(time: string): number {
+  if (/[Zz]|[+-]\d{2}(?::?\d{2})?$/.test(time)) {
+    return Date.parse(time);
+  }
+  return Date.parse(`${time}Z`);
+}
+
+// Pick the hourly slot closest to the target UTC instant (handles :00 vs :00:00, ms, Z).
+function targetHourIndex(times: string[], date: string, hourUtc: number): number {
+  if (times.length === 0) return 0;
+  const parts = date.split('-');
+  const y = Number(parts[0]);
+  const mo = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+    return 0;
+  }
+  const targetMs = Date.UTC(y, mo - 1, d, hourUtc, 0, 0);
+  let best = 0;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < times.length; i++) {
+    const tMs = parseOpenMeteoUtcMs(times[i]);
+    if (Number.isNaN(tMs)) continue;
+    const diff = Math.abs(tMs - targetMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
   }
   return best;
 }
