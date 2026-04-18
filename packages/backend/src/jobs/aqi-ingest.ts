@@ -5,8 +5,8 @@ import { fetchLocations, fetchSensorMeasurements, PARAMETERS } from '../lib/open
 const BATCH_SIZE = 500;
 const CONCURRENCY = 1; // sequential — OpenAQ free tier is strictly rate limited
 const REQUEST_DELAY_MS = 600; // ~1.5 req/s, well under the free tier limit
-// Only fetch measurements for the countries this project covers
-const TARGET_COUNTRIES = new Set(['TH', 'MM', 'LA', 'KH']);
+// Fetch measurements for all countries that fall within the viewport bbox [89,1,114,30]
+const TARGET_COUNTRIES = new Set(['TH', 'MM', 'LA', 'KH', 'VN', 'CN', 'BD', 'MY', 'IN']);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
