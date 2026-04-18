@@ -1,8 +1,10 @@
 import type { WindVector, PM25GridPoint } from '@thailand-aq/types';
 
-// 2° grid for wind — 168 points
-const LNG_POINTS = [92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114];
-const LAT_POINTS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27];
+// 2° grid for wind — 224 points (14 lng × 16 lat)
+// Starts one step outside VIEWPORT_BBOX [89,1,114,30] so bilinear interpolation
+// has full coverage at every viewport corner.
+const LNG_POINTS = [88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114];
+const LAT_POINTS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
 
 // 0.4° grid for PM2.5 — matches Open-Meteo CAMS native resolution
 // bbox [89,1,114,30] → 63 × 73 = 4,599 points; cell edges align to viewport corners

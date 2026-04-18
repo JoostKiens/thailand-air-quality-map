@@ -9,7 +9,8 @@ import { useAQGrid } from '../../hooks/useAQGrid';
 import { AQILegend } from './AQILegend';
 import { VIEWPORT_BBOX } from '../../lib/bbox';
 import { createFiresLayer } from '../../layers/FiresLayer';
-
+import { useWind } from '../../hooks/useWind';
+import { useWindParticles } from '../../hooks/useWindParticles';
 import {
   createLandMaskLayer,
   createPM25BitmapLayer,
@@ -34,14 +35,19 @@ export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const beforeIdRef = useRef<string | undefined>(undefined);
+  const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
   const [zoom, setZoom] = useState(ZOOM);
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
   const { data: aqGrid } = useAQGrid();
+  const { data: wind } = useWind();
   const firesConfig = useLayerStore((s) => s.layers.fires);
   const pm25Config = useLayerStore((s) => s.layers.pm25);
+  const windConfig = useLayerStore((s) => s.layers.wind);
+
+  useWindParticles(map, wind, windConfig);
 
   // Rebuild and push Deck.gl layers whenever data, visibility, zoom, or overlay changes.
   useEffect(() => {
@@ -74,7 +80,7 @@ export function MapView() {
     if (!containerRef.current) return;
     let mounted = true;
 
-    const map = new mapboxgl.Map({
+    const mapInstance = new mapboxgl.Map({
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/dark-v11',
       center: CENTER,
@@ -88,26 +94,27 @@ export function MapView() {
     // Create the overlay only after the style has loaded so we can detect the
     // first admin/symbol layer ID. This ensures admin boundaries, country
     // borders, and all place labels render on top of the Deck.gl data layers.
-    map.on('load', () => {
+    mapInstance.on('load', () => {
       if (!mounted) return;
-      beforeIdRef.current = detectBeforeId(map);
+      beforeIdRef.current = detectBeforeId(mapInstance);
       const ov = createOverlay({ layers: [] });
-      map.addControl(ov);
-      setZoom(map.getZoom());
+      mapInstance.addControl(ov);
+      setZoom(mapInstance.getZoom());
       setOverlay(ov);
+      setMap(mapInstance);
     });
 
-    map.on('zoomend', () => {
-      console.log('zoomend', map.getZoom());
-      if (mounted) setZoom(map.getZoom());
+    mapInstance.on('zoomend', () => {
+      if (mounted) setZoom(mapInstance.getZoom());
     });
 
-    mapRef.current = map;
+    mapRef.current = mapInstance;
 
     return () => {
       mounted = false;
-      map.remove();
+      setMap(null);
       setOverlay(null);
+      mapInstance.remove();
     };
   }, []);
 
