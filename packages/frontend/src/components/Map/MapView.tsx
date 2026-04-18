@@ -11,7 +11,7 @@ import { createFiresLayer } from '../../layers/FiresLayer';
 import {
   createLandMaskLayer,
   createPM25BitmapLayer,
-  createPM25StationsLayer,
+  createPM25StationsLayers,
 } from '../../layers/PM25Layer';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -34,6 +34,7 @@ export function MapView() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const beforeIdRef = useRef<string | undefined>(undefined);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
+  const [zoom, setZoom] = useState(ZOOM);
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
@@ -41,7 +42,7 @@ export function MapView() {
   const firesConfig = useLayerStore((s) => s.layers.fires);
   const pm25Config = useLayerStore((s) => s.layers.pm25);
 
-  // Rebuild and push Deck.gl layers whenever data, visibility, or overlay changes.
+  // Rebuild and push Deck.gl layers whenever data, visibility, zoom, or overlay changes.
   useEffect(() => {
     if (!overlay) return;
     const beforeId = beforeIdRef.current;
@@ -54,10 +55,19 @@ export function MapView() {
       layers.push(createFiresLayer(fires, firesConfig.opacity, beforeId));
     }
     if (pm25Config.visible && aqi) {
-      layers.push(createPM25StationsLayer(aqi, beforeId)); // stations render above fires
+      layers.push(...createPM25StationsLayers(aqi, zoom)); // no beforeId — renders above all Mapbox labels
     }
     overlay.setProps({ layers });
-  }, [overlay, fires, firesConfig.visible, firesConfig.opacity, aqi, aqGrid, pm25Config.visible]);
+  }, [
+    overlay,
+    fires,
+    firesConfig.visible,
+    firesConfig.opacity,
+    aqi,
+    aqGrid,
+    pm25Config.visible,
+    zoom,
+  ]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -82,7 +92,12 @@ export function MapView() {
       beforeIdRef.current = detectBeforeId(map);
       const ov = createOverlay({ layers: [] });
       map.addControl(ov);
+      setZoom(map.getZoom());
       setOverlay(ov);
+    });
+
+    map.on('zoomend', () => {
+      if (mounted) setZoom(map.getZoom());
     });
 
     mapRef.current = map;

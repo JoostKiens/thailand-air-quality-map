@@ -43,3 +43,9 @@ export function pm25ToRgba(pm25: number, alpha: number): RGBA {
   const [r, g, b] = pm25ToRgb(pm25);
   return [r, g, b, alpha];
 }
+
+// Returns black text for light backgrounds, white for dark ones.
+export function contrastColor(rgb: RGB): RGBA {
+  const lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+  return lum > 150 ? [0, 0, 0, 255] : [255, 255, 255, 255];
+}
