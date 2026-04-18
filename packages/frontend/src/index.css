@@ -1,2 +1,16 @@
+@import "tailwindcss";
+
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; }
+
+@layer base {
+  input[type='range'] {
+    @apply w-full h-1 rounded-full bg-gray-200 appearance-none cursor-pointer;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 rounded-full bg-teal-600 border-2 border-white shadow-sm;
+  }
+  input[type='range']::-moz-range-thumb {
+    @apply w-4 h-4 rounded-full bg-teal-600 border-2 border-white;
+  }
+}

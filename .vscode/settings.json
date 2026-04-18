@@ -21,6 +21,7 @@
     "openmeteo",
     "postgis",
     "rediss",
+    "resourcewatch",
     "SNPP",
     "timestamptz",
     "winddirection",

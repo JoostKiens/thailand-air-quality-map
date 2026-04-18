@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type LayerId = 'pm25' | 'fires' | 'wind' | 'traffic' | 'burnScars' | 'powerPlants';
+export type LayerId = 'aqGrid' | 'aqStations' | 'fires' | 'wind' | 'powerPlants';
 
 interface LayerState {
   visible: boolean;
@@ -13,15 +13,14 @@ interface LayerStore {
   setOpacity: (id: LayerId, opacity: number) => void;
 }
 
-const DEFAULT_LAYER: LayerState = { visible: true, opacity: 1.0 };
+const ON: LayerState = { visible: true, opacity: 1.0 };
 
 export const useLayerStore = create<LayerStore>((set) => ({
   layers: {
-    pm25: { ...DEFAULT_LAYER },
-    fires: { ...DEFAULT_LAYER },
-    wind: { ...DEFAULT_LAYER },
-    traffic: { ...DEFAULT_LAYER },
-    burnScars: { ...DEFAULT_LAYER },
+    aqGrid: { ...ON },
+    aqStations: { ...ON },
+    fires: { ...ON },
+    wind: { ...ON },
     powerPlants: { visible: false, opacity: 1.0 },
   },
   toggleLayer: (id) =>

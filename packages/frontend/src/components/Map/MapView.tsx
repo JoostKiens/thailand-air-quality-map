@@ -1,13 +1,12 @@
 import { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { PickingInfo } from 'deck.gl';
 import { createOverlay, type OverlayInstance } from '../../lib/deck-overlay';
 import { useLayerStore } from '../../store/layerStore';
+import { useUIStore } from '../../store/uiStore';
 import { useFires } from '../../hooks/useFires';
 import { useAQI } from '../../hooks/useAQI';
 import { useAQGrid } from '../../hooks/useAQGrid';
-import { AQILegend } from './AQILegend';
 import { VIEWPORT_BBOX } from '../../lib/bbox';
 import { createFiresLayer } from '../../layers/FiresLayer';
 import { useWind } from '../../hooks/useWind';
@@ -19,10 +18,6 @@ import {
 } from '../../layers/PM25Layer';
 import { usePowerPlants } from '../../hooks/usePowerPlants';
 import { createPowerPlantsLayer } from '../../layers/PowerPlantsLayer';
-import { LayerControl } from '../Sidebar/LayerControl';
-import { PowerPlantTooltip, type HoverInfo } from './PowerPlantTooltip';
-import { PowerPlantLegend } from './PowerPlantLegend';
-import type { PowerPlantFeature } from '@thailand-aq/types';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const CENTER: [number, number] = [101.0, 15.5];
@@ -42,7 +37,6 @@ export function MapView() {
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
   const [zoom, setZoom] = useState(ZOOM);
-  const [hoverInfo, setHoverInfo] = useState<HoverInfo>({ plant: null, x: 0, y: 0 });
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
@@ -50,37 +44,37 @@ export function MapView() {
   const { data: wind } = useWind();
   const { data: powerPlants } = usePowerPlants();
 
+  const aqGridConfig = useLayerStore((s) => s.layers.aqGrid);
+  const aqStationsConfig = useLayerStore((s) => s.layers.aqStations);
   const firesConfig = useLayerStore((s) => s.layers.fires);
-  const pm25Config = useLayerStore((s) => s.layers.pm25);
   const windConfig = useLayerStore((s) => s.layers.wind);
   const powerPlantsConfig = useLayerStore((s) => s.layers.powerPlants);
 
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
+
   useWindParticles(map, wind, windConfig);
 
+  // Sync map padding with sidebar state
+  useEffect(() => {
+    if (!map) return;
+    map.easeTo({ padding: { left: sidebarOpen ? 240 : 0 }, duration: 300 });
+  }, [map, sidebarOpen]);
+
+  // Rebuild Deck.gl layers on data/visibility/zoom changes
   useEffect(() => {
     if (!overlay) return;
     const beforeId = beforeIdRef.current;
     const layers = [];
 
-    if (pm25Config.visible) {
+    if (aqGridConfig.visible) {
       layers.push(createLandMaskLayer(beforeId));
       if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
     }
 
     if (powerPlantsConfig.visible && powerPlants) {
       layers.push(
-        createPowerPlantsLayer(
-          powerPlants,
-          powerPlantsConfig.opacity,
-          (info: PickingInfo) => {
-            setHoverInfo({
-              plant: info.object as PowerPlantFeature | null,
-              x: info.x,
-              y: info.y,
-            });
-          },
-          beforeId,
-        ),
+        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, () => {}, beforeId),
       );
     }
 
@@ -88,7 +82,7 @@ export function MapView() {
       layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, beforeId));
     }
 
-    if (pm25Config.visible && aqi) {
+    if (aqStationsConfig.visible && aqi) {
       layers.push(...createPM25StationsLayers(aqi, zoom));
     }
 
@@ -100,7 +94,8 @@ export function MapView() {
     firesConfig.opacity,
     aqi,
     aqGrid,
-    pm25Config.visible,
+    aqGridConfig.visible,
+    aqStationsConfig.visible,
     zoom,
     powerPlants,
     powerPlantsConfig.visible,
@@ -124,6 +119,7 @@ export function MapView() {
 
     mapInstance.on('load', () => {
       if (!mounted) return;
+      mapInstance.setPadding({ left: 240 });
       beforeIdRef.current = detectBeforeId(mapInstance);
       const ov = createOverlay({ layers: [] });
       mapInstance.addControl(ov);
@@ -136,6 +132,11 @@ export function MapView() {
       if (mounted) setZoom(mapInstance.getZoom());
     });
 
+    mapInstance.on('click', (e) => {
+      if (!mounted) return;
+      setSelectedPoint({ lngLat: [e.lngLat.lng, e.lngLat.lat] });
+    });
+
     mapRef.current = mapInstance;
 
     return () => {
@@ -144,27 +145,7 @@ export function MapView() {
       setOverlay(null);
       mapInstance.remove();
     };
-  }, []);
+  }, [setSelectedPoint]);
 
-  return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 32,
-          left: 12,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          pointerEvents: 'none',
-        }}
-      >
-        {pm25Config.visible && <AQILegend />}
-        {powerPlantsConfig.visible && <PowerPlantLegend />}
-      </div>
-      <PowerPlantTooltip info={hoverInfo} />
-      <LayerControl />
-    </div>
-  );
+  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }
