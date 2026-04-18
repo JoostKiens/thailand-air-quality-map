@@ -47,7 +47,7 @@ simplicity and correctness over premature optimization.
 │           │   ├── TimeSlider/
 │           │   └── StatsPanel/
 │           ├── layers/       # one file per Deck.gl layer
-│           │   ├── FiresLayer.tsx
+│           │   ├── FiresLayer.ts
 │           │   ├── PM25Layer.tsx
 │           │   ├── WindLayer.tsx
 │           │   └── TrafficLayer.tsx
@@ -408,7 +408,7 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 | ------------- | -------------------------------- | ----------------------------------------------------- |
 | PM2.5 heatmap | `BitmapLayer` + `MaskExtension` | Open-Meteo CAMS grid, 0.4° cells, bilinearly interpolated onto 630×730 px canvas, clipped to land via `SolidPolygonLayer` mask (`sea-land-mask.json`) |
 | PM2.5 stations| `ScatterplotLayer`               | OpenAQ ground stations, colored by `aqiColor(d.value)`, 5px radius |
-| Fire points   | `ScatterplotLayer`               | `getRadius: d => 375 + sqrt(frp)*150` meters, color: orange `#f97316` |
+| Fire points   | 3× `ScatterplotLayer` (additive blend) | Outer glow / mid halo / inner core rings; pixel radius scales with zoom (1–3 px base); intensity from `brightTi4`; low-confidence at 50% opacity |
 | Wind vectors  | `ScatterplotLayer` + `PathLayer` | arrow glyphs, direction from `directionDeg`           |
 | Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
