@@ -27,6 +27,7 @@ simplicity and correctness over premature optimization.
 │   │       ├── fire.ts
 │   │       ├── aqi.ts
 │   │       ├── wind.ts
+│   │       ├── power-plant.ts
 │   │       └── index.ts
 │   ├── backend/              # Node + Fastify API + BullMQ workers
 │   │   └── src/
@@ -49,12 +50,15 @@ simplicity and correctness over premature optimization.
 │           ├── layers/       # one file per Deck.gl layer
 │           │   ├── FiresLayer.ts
 │           │   ├── PM25Layer.tsx
-│           │   ├── WindLayer.tsx
+│           │   ├── WindLayer.ts
+│           │   ├── PowerPlantsLayer.ts
 │           │   └── TrafficLayer.tsx
 │           ├── hooks/        # TanStack Query hooks, one per data type
 │           │   ├── useFires.ts
 │           │   ├── useAQI.ts
-│           │   └── useWind.ts
+│           │   ├── useWind.ts
+│           │   ├── useWindParticles.ts
+│           │   └── usePowerPlants.ts
 │           └── store/        # Zustand stores
 │               ├── layerStore.ts
 │               └── timeStore.ts
@@ -230,6 +234,24 @@ create index on measurements (parameter, measured_at);
 create index on measurements (measured_at);
 ```
 
+-- Power plants (WRI Global Power Plant Database, CC BY 4.0)
+-- Populated via: pnpm --filter backend run ingest:power-plants
+create table if not exists power_plants (
+  id                serial primary key,
+  name              text not null,
+  country           char(3) not null,
+  fuel_type         text not null check (fuel_type in ('Coal', 'Gas', 'Oil')),
+  capacity_mw       numeric(8, 2),
+  owner             text,
+  commissioned_year integer,
+  lat               float8 not null,
+  lng               float8 not null,
+  location          geography(Point, 4326) not null
+);
+create index if not exists power_plants_location_idx on power_plants using gist(location);
+create index if not exists power_plants_fuel_type_idx on power_plants (fuel_type);
+```
+
 Do not store wind data in Postgres — it is ephemeral and only needed for current display.
 
 ### OpenAQ v3 data model note
@@ -280,6 +302,11 @@ GET /api/wind/current?bbox=...
 GET /api/aq/pm25?date=YYYY-MM-DD&bbox=...
   Returns Open-Meteo CAMS gridded PM2.5 for a specific date (up to 4,599 points at 0.4° grid, bbox [89,1,114,30]).
   Redis first (key: aq:pm25:{date}, TTL 48h); on miss fetches live from Open-Meteo.
+
+GET /api/power-plants
+  Returns WRI power plants (Coal/Gas/Oil) for THA/MMR/LAO/KHM as a GeoJSON FeatureCollection.
+  Redis cache key: power_plants:geojson, TTL 24h. Data source: WRI Global Power Plant Database.
+  Populate via: pnpm --filter backend run ingest:power-plants
 
 GET /health
   Returns { status: 'ok', queues: {...}, cache: 'connected', db: 'connected' }
@@ -368,6 +395,7 @@ interface LayerStore {
     wind: { visible: boolean; opacity: number };
     traffic: { visible: boolean; opacity: number };
     burnScars: { visible: boolean; opacity: number };
+    powerPlants: { visible: boolean; opacity: number }; // default off
   };
   toggleLayer: (id: LayerId) => void;
   setOpacity: (id: LayerId, opacity: number) => void;
@@ -409,7 +437,8 @@ the worker process. Use BullMQ's built-in job deduplication to prevent overlappi
 | PM2.5 heatmap | `BitmapLayer` + `MaskExtension` | Open-Meteo CAMS grid, 0.4° cells, bilinearly interpolated onto 630×730 px canvas, clipped to land via `SolidPolygonLayer` mask (`sea-land-mask.json`) |
 | PM2.5 stations| `ScatterplotLayer`               | OpenAQ ground stations, colored by `aqiColor(d.value)`, 5px radius |
 | Fire points   | 3× `ScatterplotLayer` (additive blend) | Outer glow / mid halo / inner core rings; pixel radius scales with zoom (1–3 px base); intensity from `brightTi4`; low-confidence at 50% opacity |
-| Wind vectors  | `ScatterplotLayer` + `PathLayer` | arrow glyphs, direction from `directionDeg`           |
+| Wind particles | Animated `PathLayer` (non-interleaved overlay) | 1500 particles, bilinear interpolation, TRAIL_LENGTH=10, rAF loop |
+| Power plants  | `IconLayer`                      | Canvas atlas (96×32 diamond icons), Coal/Gas/Oil fuel types, 24px fixed size, hover tooltip |
 | Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
 Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
@@ -447,6 +476,7 @@ The following attributions must appear in the UI footer or an "About" panel:
 - Fire data: "Fire data courtesy NASA FIRMS (firms.modaps.eosdis.nasa.gov)"
 - AQI data: "Air quality data from OpenAQ (openaq.org)"
 - Weather data: `<a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a>` (required by CC BY 4.0)
+- Power plant data: "Power plant data from WRI Global Power Plant Database (resourcewatch.org)" (CC BY 4.0)
 - Map tiles: Mapbox attribution (rendered automatically by Mapbox GL JS)
 
 ---
@@ -508,6 +538,7 @@ pnpm --filter backend run ingest:firms
 pnpm --filter backend run ingest:aqi
 pnpm --filter backend run ingest:wind
 pnpm --filter backend run ingest:aq YYYY-MM-DD   # Open-Meteo CAMS PM2.5 grid
+pnpm --filter backend run ingest:power-plants    # WRI power plants (one-off; pass local CSV path as optional arg)
 
 # Type-check all packages
 pnpm typecheck

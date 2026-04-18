@@ -4,9 +4,6 @@ export function AQILegend() {
   return (
     <div
       style={{
-        position: 'absolute',
-        bottom: 32,
-        left: 12,
         background: 'rgba(0,0,0,0.65)',
         borderRadius: 8,
         padding: '8px 12px',

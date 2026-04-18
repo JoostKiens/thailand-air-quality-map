@@ -16,9 +16,11 @@
     "ingest:wind": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-wind.ts",
     "ingest:aq": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq.ts",
     "backfill": "node --env-file=.env.local --import=tsx/esm src/scripts/backfill.ts",
-    "prune": "node --env-file=.env.local --import=tsx/esm src/scripts/prune.ts"
+    "prune": "node --env-file=.env.local --import=tsx/esm src/scripts/prune.ts",
+    "ingest:power-plants": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-power-plants.ts"
   },
   "dependencies": {
+    "csv-parse": "^5.5.0",
     "@fastify/cors": "^10.1.0",
     "@supabase/supabase-js": "^2.45.0",
     "@thailand-aq/types": "workspace:*",

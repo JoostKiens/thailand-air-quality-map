@@ -3,3 +3,4 @@ export * from './fire';
 export * from './measurement';
 export * from './station';
 export * from './wind';
+export * from './power-plant';

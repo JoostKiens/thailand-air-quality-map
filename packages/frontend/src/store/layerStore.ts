@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type LayerId = 'pm25' | 'fires' | 'wind' | 'traffic' | 'burnScars';
+export type LayerId = 'pm25' | 'fires' | 'wind' | 'traffic' | 'burnScars' | 'powerPlants';
 
 interface LayerState {
   visible: boolean;
@@ -22,6 +22,7 @@ export const useLayerStore = create<LayerStore>((set) => ({
     wind: { ...DEFAULT_LAYER },
     traffic: { ...DEFAULT_LAYER },
     burnScars: { ...DEFAULT_LAYER },
+    powerPlants: { visible: false, opacity: 1.0 },
   },
   toggleLayer: (id) =>
     set((state) => ({
