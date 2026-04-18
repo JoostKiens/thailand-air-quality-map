@@ -73,7 +73,7 @@ const BITMAP_BOUNDS: [number, number, number, number] = [
 
 // Alpha values — heatmap is more translucent so the basemap shows through;
 // stations are more opaque so individual dots remain legible.
-const HEATMAP_ALPHA = 50;
+const HEATMAP_ALPHA = 80;
 const STATION_ALPHA = 200;
 
 // Bilinearly interpolate between four RGBA corner colors.

@@ -82,7 +82,7 @@ export function MapView() {
 
     const mapInstance = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: 'mapbox://styles/joostkiens/cm30pk39v00ah01qz4n2i1ssu',
       center: CENTER,
       zoom: ZOOM,
       minZoom: MIN_ZOOM,
