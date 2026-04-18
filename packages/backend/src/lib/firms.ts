@@ -1,4 +1,4 @@
-const BBOX = '89,1,114,30'; // west,south,east,north — matches viewport MAX_BOUNDS
+import { DEFAULT_BBOX } from './bbox.js';
 
 export interface FirmsRow {
   detectedAt: string; // ISO 8601 UTC
@@ -20,7 +20,7 @@ export async function fetchFirms(date: string): Promise<FirmsRow[]> {
 
   const url =
     `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${mapKey}` +
-    `/VIIRS_SNPP_NRT/${BBOX}/1/${date}`;
+    `/VIIRS_SNPP_NRT/${DEFAULT_BBOX}/1/${date}`;
 
   const res = await fetch(url);
   if (!res.ok) {

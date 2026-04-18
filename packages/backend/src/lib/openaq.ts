@@ -1,5 +1,6 @@
+import { DEFAULT_BBOX } from './bbox.js';
+
 const BASE_URL = 'https://api.openaq.org/v3';
-const BBOX = '89,1,114,30'; // west,south,east,north — matches viewport MAX_BOUNDS
 
 export const PARAMETERS = ['pm25', 'pm10', 'no2', 'o3', 'so2', 'co', 'bc'] as const;
 
@@ -101,7 +102,7 @@ export async function fetchLocations(): Promise<OpenAQLocation[]> {
   let page = 1;
 
   while (true) {
-    const url = `${BASE_URL}/locations?bbox=${BBOX}&limit=1000&page=${page}`;
+    const url = `${BASE_URL}/locations?bbox=${DEFAULT_BBOX}&limit=1000&page=${page}`;
     const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
 
     if (!res.ok) {
