@@ -1,6 +1,8 @@
 import { useLayerStore } from '../../../store/layerStore';
+import { useUIStore } from '../../../store/uiStore';
 import { AQI_CATEGORIES } from '../../../lib/aqiColors';
 import { FUEL_COLORS } from '../../../layers/PowerPlantsLayer';
+import { baseRadiusForZoom } from '../../../layers/FiresLayer';
 import { Toggle } from './Toggle';
 
 function rgbToHex([r, g, b]: [number, number, number]): string {
@@ -90,9 +92,28 @@ function AirQualityGroup() {
   );
 }
 
+// Display radii per zoom tier × intensity extreme.
+// Layer uses pixel radii 1/3/6; these are scaled for legibility, not pixel-accurate.
+function fireLegendRadii(baseR: number): [lowR: number, highR: number] {
+  if (baseR === 1) return [3, 6];
+  if (baseR === 3) return [5, 9];
+  return [7, 12]; // baseR === 6
+}
+
+function FireSwatch({ r, dim }: { r: number; dim?: boolean }) {
+  const size = r * 2;
+  return (
+    <svg width={size} height={size} className="shrink-0">
+      <circle cx={r} cy={r} r={r - 0.5} fill="#f97316" fillOpacity={dim ? 0.35 : 0.9} />
+    </svg>
+  );
+}
+
 function FiresGroup() {
   const visible = useLayerStore((s) => s.layers.fires.visible);
   const toggleLayer = useLayerStore((s) => s.toggleLayer);
+  const zoom = useUIStore((s) => s.mapZoom);
+  const [lowR, highR] = fireLegendRadii(baseRadiusForZoom(zoom));
 
   return (
     <article className="px-4 py-3">
@@ -104,20 +125,21 @@ function FiresGroup() {
       />
       {visible && (
         <div className="mt-2.5 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full shrink-0 opacity-50"
-              style={{ backgroundColor: '#F97316' }}
-            />
-            <span className="text-[10px] text-gray-400">Low–medium (FRP &lt; 50 MW)</span>
+          <div className="flex items-center gap-2.5">
+            <span className="w-6 flex items-center justify-center shrink-0">
+              <FireSwatch r={lowR} dim />
+            </span>
+            <span className="text-[10px] text-gray-400">Low FRP</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: '#F97316' }}
-            />
-            <span className="text-[10px] text-gray-400">High (FRP ≥ 50 MW)</span>
+          <div className="flex items-center gap-2.5">
+            <span className="w-6 flex items-center justify-center shrink-0">
+              <FireSwatch r={highR} />
+            </span>
+            <span className="text-[10px] text-gray-400">High FRP</span>
           </div>
+          <p className="text-[9px] text-gray-400 mt-1">
+            Size scales with zoom &amp; fire radiative power
+          </p>
         </div>
       )}
     </article>

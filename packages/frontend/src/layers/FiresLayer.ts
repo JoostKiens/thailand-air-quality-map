@@ -44,7 +44,7 @@ function ringColor(ring: (typeof RINGS)[number], d: FirePoint): RGBA4 {
  * so overlapping points accumulate light — dense clusters naturally appear brighter.
  * Intensity scales with `brightTi4`; low-confidence points render at half opacity.
  */
-function baseRadiusForZoom(zoom: number): number {
+export function baseRadiusForZoom(zoom: number): number {
   if (zoom >= 11) return 6;
   if (zoom >= 8) return 3;
   return 1;

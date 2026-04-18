@@ -36,7 +36,6 @@ export function MapView() {
   const beforeIdRef = useRef<string | undefined>(undefined);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
-  const [zoom, setZoom] = useState(ZOOM);
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
@@ -52,6 +51,8 @@ export function MapView() {
 
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
+  const zoom = useUIStore((s) => s.mapZoom);
+  const setMapZoom = useUIStore((s) => s.setMapZoom);
 
   useWindParticles(map, wind, windConfig);
 
@@ -123,13 +124,13 @@ export function MapView() {
       beforeIdRef.current = detectBeforeId(mapInstance);
       const ov = createOverlay({ layers: [] });
       mapInstance.addControl(ov);
-      setZoom(mapInstance.getZoom());
+      setMapZoom(mapInstance.getZoom());
       setOverlay(ov);
       setMap(mapInstance);
     });
 
     mapInstance.on('zoomend', () => {
-      if (mounted) setZoom(mapInstance.getZoom());
+      if (mounted) setMapZoom(mapInstance.getZoom());
     });
 
     mapInstance.on('click', (e) => {
@@ -145,7 +146,7 @@ export function MapView() {
       setOverlay(null);
       mapInstance.remove();
     };
-  }, [setSelectedPoint]);
+  }, [setSelectedPoint, setMapZoom]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }

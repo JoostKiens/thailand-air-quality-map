@@ -19,6 +19,8 @@ interface UIStore {
   setScrubberDay: (day: number) => void;
   playing: boolean;
   setPlaying: (playing: boolean) => void;
+  mapZoom: number;
+  setMapZoom: (zoom: number) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -31,6 +33,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setScrubberDay: (day) => set({ scrubberDay: day }),
   playing: false,
   setPlaying: (playing) => set({ playing }),
+  mapZoom: 5.5,
+  setMapZoom: (zoom) => set({ mapZoom: zoom }),
 }));
 
 // day 0 = 30 days ago, day 29 = yesterday
