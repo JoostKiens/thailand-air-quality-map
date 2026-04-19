@@ -76,11 +76,15 @@ export async function fetchSensorMeasurements(
         );
         return [];
       }
-      const wait = RETRY_DELAYS[attempt++];
+      const retryAfterSec = Number(res.headers.get('Retry-After'));
+      const wait =
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : RETRY_DELAYS[attempt++];
       console.warn(
-        `[openaq] sensor ${sensorId}: 429 rate limited, waiting ${wait / 1000}s (attempt ${attempt})`,
+        `[openaq] sensor ${sensorId}: 429 rate limited, waiting ${Math.round((wait ?? 0) / 1000)}s (attempt ${attempt})`,
       );
-      await sleep(wait);
+      await sleep(wait ?? 0);
       continue;
     }
     if (res.status === 404) return []; // sensor has no data for this period

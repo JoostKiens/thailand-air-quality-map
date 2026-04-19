@@ -117,9 +117,13 @@ async function fetchAQBatch(
   for (let attempt = 0; attempt <= AQ_RETRY_DELAYS_MS.length; attempt++) {
     res = await fetch(url);
     if (res.status !== 429) break;
-    const delay = AQ_RETRY_DELAYS_MS[attempt];
-    if (delay === undefined) break;
-    console.warn(`[openmeteo] 429 on AQ batch, retrying in ${delay}ms...`);
+    const retryAfterSec = Number(res.headers.get('Retry-After'));
+    const delay =
+      Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? retryAfterSec * 1000
+        : (AQ_RETRY_DELAYS_MS[attempt] ?? 0);
+    if (delay === 0) break;
+    console.warn(`[openmeteo] 429 on AQ batch, retrying in ${Math.round(delay / 1000)}s...`);
     await new Promise((r) => setTimeout(r, delay));
   }
 
