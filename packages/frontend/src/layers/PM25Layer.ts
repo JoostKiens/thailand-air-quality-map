@@ -75,7 +75,7 @@ const BITMAP_BOUNDS: [number, number, number, number] = [
 // Alpha values — heatmap is more translucent so the basemap shows through;
 // stations are more opaque so individual dots remain legible.
 const HEATMAP_ALPHA = 80;
-const STATION_ALPHA = 200;
+const STATION_ALPHA = 255;
 
 // Bilinearly interpolate between four RGBA corner colors.
 function lerpColor(c00: RGBA, c10: RGBA, c01: RGBA, c11: RGBA, tx: number, ty: number): RGBA {
@@ -173,7 +173,7 @@ export function createPM25BitmapLayer(data: PM25GridPoint[], beforeId?: string) 
 
 // --- Station clustering ---
 
-const CLUSTER_RADIUS = 30;
+const CLUSTER_RADIUS = 40;
 
 // Minimal structural type for Supercluster output — discriminated on `cluster`.
 interface StationClusterFeature {
@@ -229,11 +229,11 @@ export function createPM25StationsLayers(
     data: clusters,
     getPosition,
     getFillColor: (d) => pm25ToRgba(pm25OfFeature(d), STATION_ALPHA),
-    getLineColor: [255, 255, 255, 128],
+    getLineColor: (d) => contrastColor(pm25ToRgb(pm25OfFeature(d))),
     getRadius: STATION_RADIUS_PX,
     radiusUnits: 'pixels',
     lineWidthUnits: 'pixels',
-    getLineWidth: 1.5,
+    getLineWidth: 2,
     stroked: true,
     pickable: true,
     parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
