@@ -37,8 +37,11 @@ export const useUIStore = create<UIStore>((set) => ({
   setMapZoom: (zoom) => set({ mapZoom: zoom }),
 }));
 
-// day 0 = 30 days ago, day 29 = yesterday
+const ICT_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7 — Bangkok / ICT
+
+// day 0 = 30 days ago (ICT), day 29 = yesterday (ICT)
 export function dayToDate(day: number): string {
-  const d = new Date(Date.now() - (30 - day) * 86_400_000);
+  const todayIctMs = Date.now() + ICT_OFFSET_MS;
+  const d = new Date(todayIctMs - (30 - day) * 86_400_000);
   return d.toISOString().slice(0, 10);
 }
