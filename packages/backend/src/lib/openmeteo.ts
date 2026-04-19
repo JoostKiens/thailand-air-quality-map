@@ -128,10 +128,13 @@ async function fetchAQBatch(
       delay = retryAfterSec * 1000;
       delaySource = `Retry-After header (${retryAfterSec}s)`;
     } else {
-      // Parse body for hint: "Please try again in the next hour." → wait until next hour boundary
       const body = (await res.json().catch(() => null)) as { reason?: string } | null;
       const reason = body?.reason ?? '';
-      if (/next hour/i.test(reason)) {
+      if (/tomorrow|daily/i.test(reason)) {
+        // Daily quota exhausted — no point retrying until UTC midnight
+        console.warn(`[openmeteo] 429 daily limit: "${reason}" — skipping batch`);
+        return [];
+      } else if (/next hour/i.test(reason)) {
         const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 5_000; // +5s buffer
         delay = msUntilNextHour;
         delaySource = `body hint "next hour" (${Math.round(delay / 1000)}s until :00)`;

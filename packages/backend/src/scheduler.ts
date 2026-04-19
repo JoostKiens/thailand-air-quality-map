@@ -51,7 +51,7 @@ const JOBS = [
   },
   {
     name: 'aq-ingest',
-    cron: '0 */6 * * *', // every 6 hours
+    cron: '0 4 * * *', // once daily at 04:00 UTC (11:00 BKK) — CAMS updates ~twice daily
     run: async () => runAqIngest(),
   },
   {
