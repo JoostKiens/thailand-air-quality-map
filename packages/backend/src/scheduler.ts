@@ -25,7 +25,7 @@ const makeConnection = () =>
   new IORedis(redisUrl, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    tls: redisUrl.startsWith('rediss://') ? {} : undefined,
+    tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   });
 
 // ---------------------------------------------------------------------------
