@@ -18,7 +18,9 @@ const AQ_LAT_POINTS = Array.from({ length: 73 }, (_, i) => Math.round((1 + i * A
 // 300 locations per request keeps URL under ~3.5KB and reduces total requests to 16
 const AQ_BATCH_SIZE = 300;
 const AQ_BATCH_CONCURRENCY = 1; // sequential — minimises request count against rate limits
-const AQ_RETRY_DELAYS_MS = [5_000, 15_000, 30_000]; // backoff on 429
+const AQ_BATCH_PAUSE_MS = 3_000; // polite delay between batches to avoid burst rate-limiting
+// Short retries handle transient spikes; last entry (10 min) covers quota window resets
+const AQ_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 600_000];
 
 interface OpenMeteoResult {
   latitude: number;
@@ -117,13 +119,32 @@ async function fetchAQBatch(
   for (let attempt = 0; attempt <= AQ_RETRY_DELAYS_MS.length; attempt++) {
     res = await fetch(url);
     if (res.status !== 429) break;
-    const retryAfterSec = Number(res.headers.get('Retry-After'));
-    const delay =
-      Number.isFinite(retryAfterSec) && retryAfterSec > 0
-        ? retryAfterSec * 1000
-        : (AQ_RETRY_DELAYS_MS[attempt] ?? 0);
+    const retryAfterRaw = res.headers.get('Retry-After');
+    const retryAfterSec = Number(retryAfterRaw);
+
+    let delay: number;
+    let delaySource: string;
+    if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+      delay = retryAfterSec * 1000;
+      delaySource = `Retry-After header (${retryAfterSec}s)`;
+    } else {
+      // Parse body for hint: "Please try again in the next hour." → wait until next hour boundary
+      const body = (await res.json().catch(() => null)) as { reason?: string } | null;
+      const reason = body?.reason ?? '';
+      if (/next hour/i.test(reason)) {
+        const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 5_000; // +5s buffer
+        delay = msUntilNextHour;
+        delaySource = `body hint "next hour" (${Math.round(delay / 1000)}s until :00)`;
+      } else {
+        delay = AQ_RETRY_DELAYS_MS[attempt] ?? 0;
+        delaySource = reason ? `body="${reason}", fallback` : 'fallback';
+      }
+    }
+
+    console.warn(
+      `[openmeteo] 429 on AQ batch (attempt ${attempt + 1}/${AQ_RETRY_DELAYS_MS.length}), source=${delaySource}, waiting ${Math.round(delay / 1000)}s...`,
+    );
     if (delay === 0) break;
-    console.warn(`[openmeteo] 429 on AQ batch, retrying in ${Math.round(delay / 1000)}s...`);
     await new Promise((r) => setTimeout(r, delay));
   }
 
@@ -165,9 +186,11 @@ export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]
     });
   }
 
-  // Run batches with limited concurrency
+  // Run batches sequentially with a polite pause between each to avoid burst rate-limiting.
+  // 16 batches × 3 s = ~48 s total — acceptable for a background ingest job.
   const results: PM25GridPoint[] = [];
   for (let i = 0; i < batches.length; i += AQ_BATCH_CONCURRENCY) {
+    if (i > 0) await new Promise((r) => setTimeout(r, AQ_BATCH_PAUSE_MS));
     const chunk = batches.slice(i, i + AQ_BATCH_CONCURRENCY);
     const chunkResults = await Promise.all(chunk.map((b) => fetchAQBatch(b.lats, b.lngs, date)));
     for (const points of chunkResults) {
