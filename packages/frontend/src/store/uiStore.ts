@@ -2,11 +2,9 @@ import { create } from 'zustand';
 
 export interface SelectedPoint {
   lngLat: [number, number];
-  locationName?: string;
-  aqi?: { value: number; category: string; color: string };
-  nearestFire?: { distanceKm: number; direction: string; frp: number };
-  wind?: { speedKmh: number; directionLabel: string };
-  powerPlant?: { name: string; fuelType: string; capacityMw: number };
+  fire?: { frp: number | null; confidence: string | null; countryId: string; detectedAt: string };
+  station?: { stationName: string; pm25: number; unit: string; measuredAt: string };
+  powerPlant?: { name: string; fuelType: string; capacityMw: number | null };
 }
 
 interface UIStore {

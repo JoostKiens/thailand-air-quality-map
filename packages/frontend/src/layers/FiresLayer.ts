@@ -1,5 +1,5 @@
 import { ScatterplotLayer } from 'deck.gl';
-import type { Layer } from 'deck.gl';
+import type { Layer, PickingInfo } from 'deck.gl';
 import type { FirePoint } from '@thailand-aq/types';
 
 type RGB = [number, number, number];
@@ -54,6 +54,7 @@ export function createFiresLayer(
   data: FirePoint[],
   opacity: number,
   zoom: number,
+  onClick: (info: PickingInfo) => void,
   beforeId?: string,
   radiusScale = 1,
 ): Layer[] {
@@ -71,7 +72,11 @@ export function createFiresLayer(
         getFillColor: (d) => ringColor(ring, d),
         updateTriggers: { getRadius: baseRadius },
         parameters: ADDITIVE_BLEND,
-        pickable: i === 2, // only inner core is interactive
+        // All rings are pickable with onHover so isHovering covers the full glow area;
+        // onClick is wired only on the inner core to avoid duplicate events.
+        pickable: true,
+        onHover: (info) => !!info.picked,
+        onClick: i === 2 ? onClick : undefined,
         ...({ beforeId } as object),
       }),
   );

@@ -1,4 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
+import type { PickingInfo } from 'deck.gl';
+import type { FirePoint, PowerPlantFeature } from '@thailand-aq/types';
+import type { LatestMeasurement } from '../../hooks/useAQI';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createOverlay, type OverlayInstance } from '../../lib/deck-overlay';
@@ -49,6 +52,8 @@ export function MapView() {
   const windConfig = useLayerStore((s) => s.layers.wind);
   const powerPlantsConfig = useLayerStore((s) => s.layers.powerPlants);
 
+  const deckPickedRef = useRef(false);
+
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
   const zoom = useUIStore((s) => s.mapZoom);
@@ -68,6 +73,49 @@ export function MapView() {
     const beforeId = beforeIdRef.current;
     const layers = [];
 
+    const onFireClick = (info: PickingInfo) => {
+      if (!info.object) return;
+      const d = info.object as FirePoint;
+      deckPickedRef.current = true;
+      setSelectedPoint({
+        lngLat: [d.lng, d.lat],
+        fire: {
+          frp: d.frp,
+          confidence: d.confidence,
+          countryId: d.countryId,
+          detectedAt: d.detectedAt,
+        },
+      });
+    };
+
+    const onStationClick = (info: PickingInfo) => {
+      if (!info.object) return;
+      const feat = info.object as { properties: { cluster?: boolean } & LatestMeasurement };
+      if (feat.properties.cluster) return;
+      const d = feat.properties;
+      deckPickedRef.current = true;
+      setSelectedPoint({
+        lngLat: [d.lng, d.lat],
+        station: {
+          stationName: d.stationName,
+          pm25: d.value,
+          unit: d.unit,
+          measuredAt: d.measuredAt,
+        },
+      });
+    };
+
+    const onPowerPlantClick = (info: PickingInfo) => {
+      if (!info.object) return;
+      const feat = info.object as PowerPlantFeature;
+      const p = feat.properties;
+      deckPickedRef.current = true;
+      setSelectedPoint({
+        lngLat: [feat.geometry.coordinates[0], feat.geometry.coordinates[1]],
+        powerPlant: { name: p.name, fuelType: p.fuel_type, capacityMw: p.capacity_mw },
+      });
+    };
+
     if (aqGridConfig.visible) {
       layers.push(createLandMaskLayer(beforeId));
       if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
@@ -75,19 +123,26 @@ export function MapView() {
 
     if (powerPlantsConfig.visible && powerPlants) {
       layers.push(
-        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, () => {}, beforeId),
+        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick, beforeId),
       );
     }
 
     if (firesConfig.visible && fires) {
-      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, beforeId));
+      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick, beforeId));
     }
 
     if (aqStationsConfig.visible && aqi) {
-      layers.push(...createPM25StationsLayers(aqi, zoom));
+      layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, beforeId));
     }
 
-    overlay.setProps({ layers });
+    // getCursor overrides MapboxOverlay's default (which ignores isHovering entirely).
+    // isHovering is true when a pickable layer's onHover returned true — so each
+    // layer's onHover must return !!info.picked for this to work correctly.
+    overlay.setProps({
+      layers,
+      getCursor: ({ isHovering }: { isDragging: boolean; isHovering: boolean }) =>
+        isHovering ? 'pointer' : 'grab',
+    });
   }, [
     overlay,
     fires,
@@ -101,6 +156,7 @@ export function MapView() {
     powerPlants,
     powerPlantsConfig.visible,
     powerPlantsConfig.opacity,
+    setSelectedPoint,
   ]);
 
   useEffect(() => {
@@ -133,9 +189,13 @@ export function MapView() {
       if (mounted) setMapZoom(mapInstance.getZoom());
     });
 
-    mapInstance.on('click', (e) => {
+    mapInstance.on('click', () => {
       if (!mounted) return;
-      setSelectedPoint({ lngLat: [e.lngLat.lng, e.lngLat.lat] });
+      if (deckPickedRef.current) {
+        deckPickedRef.current = false;
+        return;
+      }
+      setSelectedPoint(null);
     });
 
     mapRef.current = mapInstance;

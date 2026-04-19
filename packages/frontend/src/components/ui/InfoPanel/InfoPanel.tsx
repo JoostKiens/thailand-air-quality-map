@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore } from '../../../store/uiStore';
 import { AqiBadge } from './AqiBadge';
+import { AQI_CATEGORIES } from '../../../lib/aqiColors';
 
 export function InfoPanel() {
   const selectedPoint = useUIStore((s) => s.selectedPoint);
@@ -50,11 +51,21 @@ export function InfoPanel() {
             {/* Header */}
             <div className="flex items-start justify-between mb-2">
               <div className="min-w-0 flex-1 pr-2">
-                {selectedPoint.locationName ? (
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight mb-0.5">
+                  {selectedPoint.fire && 'Fire detection'}
+                  {selectedPoint.station && 'AQI station'}
+                  {selectedPoint.powerPlant && 'Power plant'}
+                </p>
+                {selectedPoint.station && (
                   <p className="text-xs font-medium text-gray-700 truncate">
-                    {selectedPoint.locationName}
+                    {selectedPoint.station.stationName}
                   </p>
-                ) : null}
+                )}
+                {selectedPoint.powerPlant && (
+                  <p className="text-xs font-medium text-gray-700 truncate">
+                    {selectedPoint.powerPlant.name}
+                  </p>
+                )}
                 <p className="text-[10px] font-mono text-gray-400 leading-tight">
                   {selectedPoint.lngLat[1].toFixed(4)}°N {selectedPoint.lngLat[0].toFixed(4)}°E
                 </p>
@@ -70,39 +81,66 @@ export function InfoPanel() {
 
             {/* Rows */}
             <div className="space-y-1.5">
-              {selectedPoint.aqi && (
-                <Row index={0}>
-                  <span className="text-[11px] text-gray-500 mr-1.5">PM2.5</span>
-                  <AqiBadge
-                    value={selectedPoint.aqi.value}
-                    category={selectedPoint.aqi.category}
-                    color={selectedPoint.aqi.color}
-                  />
-                </Row>
-              )}
-              {selectedPoint.nearestFire && (
-                <Row index={1}>
-                  <span className="text-[11px] text-gray-500">
-                    🔥{' '}
-                    {selectedPoint.nearestFire.distanceKm === 0
-                      ? `FRP ${selectedPoint.nearestFire.frp} MW`
-                      : `Fire ${selectedPoint.nearestFire.distanceKm} km ${selectedPoint.nearestFire.direction}`}
-                  </span>
-                </Row>
-              )}
-              {selectedPoint.wind && (
-                <Row index={2}>
-                  <span className="text-[11px] text-gray-500">
-                    → {selectedPoint.wind.directionLabel} · {selectedPoint.wind.speedKmh} km/h
-                  </span>
-                </Row>
+              {selectedPoint.station &&
+                (() => {
+                  const pm25 = selectedPoint.station.pm25;
+                  const bp = [12.0, 35.4, 55.4, 150.4, 250.4];
+                  const cat = AQI_CATEGORIES.find((_, i) => pm25 <= (bp[i] ?? Infinity));
+                  return (
+                    <>
+                      <Row index={0}>
+                        <span className="text-[11px] text-gray-500 mr-1.5">PM2.5</span>
+                        <AqiBadge value={pm25} category={cat?.label ?? ''} />
+                      </Row>
+                      <Row index={1}>
+                        <span className="text-[11px] text-gray-400">
+                          {new Date(selectedPoint.station.measuredAt).toLocaleString('en-GB', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'Asia/Bangkok',
+                          })}
+                        </span>
+                      </Row>
+                    </>
+                  );
+                })()}
+              {selectedPoint.fire && (
+                <>
+                  <Row index={0}>
+                    <span className="text-[11px] text-gray-500">
+                      {selectedPoint.fire.frp !== null
+                        ? `FRP ${selectedPoint.fire.frp.toFixed(1)} MW`
+                        : 'No FRP data'}
+                    </span>
+                  </Row>
+                  {selectedPoint.fire.confidence && (
+                    <Row index={1}>
+                      <span className="text-[11px] text-gray-400 capitalize">
+                        Confidence: {selectedPoint.fire.confidence}
+                      </span>
+                    </Row>
+                  )}
+                  <Row index={2}>
+                    <span className="text-[11px] text-gray-400">
+                      {new Date(selectedPoint.fire.detectedAt).toLocaleString('en-GB', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZone: 'Asia/Bangkok',
+                      })}
+                    </span>
+                  </Row>
+                </>
               )}
               {selectedPoint.powerPlant && (
-                <Row index={3}>
+                <Row index={0}>
                   <span className="text-[11px] text-gray-500">
-                    ⚡ {selectedPoint.powerPlant.name} · {selectedPoint.powerPlant.fuelType}
-                    {selectedPoint.powerPlant.capacityMw
-                      ? ` ${selectedPoint.powerPlant.capacityMw} MW`
+                    {selectedPoint.powerPlant.fuelType}
+                    {selectedPoint.powerPlant.capacityMw !== null
+                      ? ` · ${selectedPoint.powerPlant.capacityMw} MW`
                       : ''}
                   </span>
                 </Row>

@@ -1,5 +1,5 @@
 import { BitmapLayer, SolidPolygonLayer, ScatterplotLayer, TextLayer } from 'deck.gl';
-import type { Layer, Position, SolidPolygonLayerProps } from 'deck.gl';
+import type { Layer, PickingInfo, Position, SolidPolygonLayerProps } from 'deck.gl';
 import { MaskExtension } from '@deck.gl/extensions';
 import Supercluster from 'supercluster';
 import type { PM25GridPoint } from '@thailand-aq/types';
@@ -219,6 +219,7 @@ const STATION_RADIUS_PX = 14;
 export function createPM25StationsLayers(
   data: LatestMeasurement[],
   zoom: number,
+  onClick: (info: PickingInfo) => void,
   beforeId?: string,
 ): Layer[] {
   const clusters = clusterStations(data, zoom);
@@ -236,6 +237,8 @@ export function createPM25StationsLayers(
     getLineWidth: 2,
     stroked: true,
     pickable: true,
+    onHover: (info) => !!info.picked,
+    onClick,
     parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
     ...({ beforeId } as object),
   });
