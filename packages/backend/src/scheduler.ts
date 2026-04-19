@@ -18,6 +18,7 @@ import { runPrune } from './jobs/prune.js';
 
 const redisUrl = process.env.UPSTASH_REDIS_URL;
 if (!redisUrl) throw new Error('Missing UPSTASH_REDIS_URL env var');
+console.log(`[scheduler] Connecting to Redis (${redisUrl.split('@').pop()})...`);
 
 // BullMQ requires maxRetriesPerRequest: null and a live ioredis connection.
 // enableReadyCheck: false is required for Upstash (serverless Redis).
@@ -63,6 +64,18 @@ const JOBS = [
 // ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
+
+// Verify connection before registering jobs
+const testConn = makeConnection();
+await new Promise<void>((resolve, reject) => {
+  testConn.once('ready', () => {
+    console.log('[scheduler] Redis connected');
+    resolve();
+  });
+  testConn.once('error', (err) => reject(new Error(`Redis connection failed: ${err.message}`)));
+  setTimeout(() => reject(new Error('Redis connection timed out after 10s')), 10_000);
+});
+await testConn.quit();
 
 for (const job of JOBS) {
   const queue = new Queue(job.name, { connection: makeConnection() });
