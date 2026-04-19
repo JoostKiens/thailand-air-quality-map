@@ -16,6 +16,14 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function formatTickDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
+}
+
 export function Scrubber() {
   const scrubberDay = useUIStore((s) => s.scrubberDay);
   const setScrubberDay = useUIStore((s) => s.setScrubberDay);
@@ -104,9 +112,11 @@ export function Scrubber() {
           className="w-full"
         />
         <div className="hidden md:flex justify-between mt-0.5">
-          <span className="text-[10px] text-gray-400">30 days ago</span>
-          <span className="text-[10px] text-gray-400">15 days ago</span>
-          <span className="text-[10px] text-gray-400">Today</span>
+          <span className="text-[10px] text-gray-400">{formatTickDate(dayToDate(0))}</span>
+          <span className="text-[10px] text-gray-400">
+            {formatTickDate(dayToDate(Math.floor((DAYS - 1) / 2)))}
+          </span>
+          <span className="text-[10px] text-gray-400">Yesterday</span>
         </div>
       </div>
     </div>
