@@ -40,7 +40,13 @@ export function MapView() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const beforeIdRef = useRef<string | undefined>(undefined);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
-  const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
+  // heatmapOverlay: interleaved — renders land-mask + pm25-bitmap inside Mapbox's
+  // WebGL pipeline so beforeId can place them below admin boundary layers.
+  const [heatmapOverlay, setHeatmapOverlay] = useState<OverlayInstance | null>(null);
+  // dataOverlay: non-interleaved — renders fires, power plants, and AQI stations on
+  // a separate canvas. Kept out of the interleaved pipeline so deck.gl never leaves
+  // dirty WebGL blend state that would corrupt Mapbox's MSAA resolve of admin borders.
+  const [dataOverlay, setDataOverlay] = useState<MapboxOverlay | null>(null);
   const [windOverlay, setWindOverlay] = useState<MapboxOverlay | null>(null);
 
   const { data: fires } = useFires();
@@ -70,10 +76,23 @@ export function MapView() {
     map.easeTo({ padding: { left: sidebarOpen ? 240 : 0 }, duration: 300 });
   }, [map, sidebarOpen]);
 
-  // Rebuild Deck.gl layers on data/visibility/zoom changes
+  // Heatmap layers — interleaved overlay only; beforeId keeps them below admin borders.
   useEffect(() => {
-    if (!overlay) return;
+    if (!heatmapOverlay) return;
     const beforeId = beforeIdRef.current;
+    const layers = [];
+
+    if (aqGridConfig.visible) {
+      layers.push(createLandMaskLayer(beforeId));
+      if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
+    }
+
+    heatmapOverlay.setProps({ layers });
+  }, [heatmapOverlay, aqGrid, aqGridConfig.visible]);
+
+  // Data layers — non-interleaved overlay; render on a separate canvas above Mapbox.
+  useEffect(() => {
+    if (!dataOverlay) return;
     const layers = [];
 
     const onFireClick = (info: PickingInfo) => {
@@ -140,41 +159,31 @@ export function MapView() {
       });
     };
 
-    if (aqGridConfig.visible) {
-      layers.push(createLandMaskLayer(beforeId));
-      if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
-    }
-
     if (powerPlantsConfig.visible && powerPlants) {
       layers.push(
-        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick, beforeId),
+        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick),
       );
     }
 
     if (firesConfig.visible && fires) {
-      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick, beforeId));
+      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick));
     }
 
     if (aqStationsConfig.visible && aqi) {
       layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick));
     }
 
-    // getCursor overrides MapboxOverlay's default (which ignores isHovering entirely).
-    // isHovering is true when a pickable layer's onHover returned true — so each
-    // layer's onHover must return !!info.picked for this to work correctly.
-    overlay.setProps({
+    dataOverlay.setProps({
       layers,
       getCursor: ({ isHovering }: { isDragging: boolean; isHovering: boolean }) =>
         isHovering ? 'pointer' : 'grab',
     });
   }, [
-    overlay,
+    dataOverlay,
     fires,
     firesConfig.visible,
     firesConfig.opacity,
     aqi,
-    aqGrid,
-    aqGridConfig.visible,
     aqStationsConfig.visible,
     zoom,
     powerPlants,
@@ -202,15 +211,20 @@ export function MapView() {
       if (!mounted) return;
       mapInstance.setPadding({ left: 240 });
       beforeIdRef.current = detectBeforeId(mapInstance);
-      // Wind overlay added first — Mapbox renders controls in add-order, so the
-      // main overlay (with AQI stations) will draw on top of wind particles.
+
+      // Non-interleaved canvases stack in addControl order (first = bottom).
+      // Wind goes below data layers; heatmap is interleaved so order doesn't matter for it.
       const windOv = new MapboxOverlay({ layers: [] });
       mapInstance.addControl(windOv);
-      const ov = createOverlay({ layers: [] });
-      mapInstance.addControl(ov);
+      const dataOv = new MapboxOverlay({ layers: [] });
+      mapInstance.addControl(dataOv);
+      const heatmapOv = createOverlay({ layers: [] });
+      mapInstance.addControl(heatmapOv);
+
       setMapZoom(mapInstance.getZoom());
       setWindOverlay(windOv);
-      setOverlay(ov);
+      setDataOverlay(dataOv);
+      setHeatmapOverlay(heatmapOv);
       setMap(mapInstance);
     });
 
@@ -232,7 +246,8 @@ export function MapView() {
     return () => {
       mounted = false;
       setMap(null);
-      setOverlay(null);
+      setHeatmapOverlay(null);
+      setDataOverlay(null);
       mapInstance.remove();
     };
   }, [setSelectedPoint, setMapZoom]);
