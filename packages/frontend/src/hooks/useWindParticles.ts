@@ -7,14 +7,14 @@ import type { WindVector } from '@thailand-aq/types';
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const N_PARTICLES = 1500;
-const TRAIL_LENGTH = 10;
+const TRAIL_LENGTH = 14;
 // Degrees of movement per frame per km/h of wind speed (at 60 fps).
 // Tuned so a 15 km/h breeze visually crosses the region in ~15 s.
 const ANIM_SCALE = 0.003;
 const BASE_ZOOM = 5.5;
 const MIN_AGE = 80;
 const MAX_AGE = 220;
-const COLOR: [number, number, number] = [180, 215, 255];
+const COLOR: [number, number, number] = [255, 255, 255];
 
 // Grid bounds — extend one step beyond the viewport so interpolation has full
 // coverage at every corner. Must match LNG_POINTS/LAT_POINTS in openmeteo.ts.
@@ -237,14 +237,14 @@ export function useWindParticles(
           data: particles.filter((p) => p.trail.length >= 2),
           getPath: (p) => p.trail,
           getColor: (p) =>
-            [...COLOR, Math.round(opacity * 180 * (1 - p.age / p.maxAge))] as [
+            [...COLOR, Math.round(opacity * 220 * (1 - p.age / p.maxAge))] as [
               number,
               number,
               number,
               number,
             ],
           widthUnits: 'pixels',
-          getWidth: 1.5,
+          getWidth: 2,
           parameters: { depthCompare: 'always' as const },
           pickable: false,
         });
