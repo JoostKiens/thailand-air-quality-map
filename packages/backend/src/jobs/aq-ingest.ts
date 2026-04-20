@@ -10,6 +10,13 @@ export async function runAqIngest(date?: string): Promise<{ stored: number }> {
   const points = await fetchAirQualityGrid(targetDate);
   console.log(`[aq-ingest] Fetched ${points.length} grid points`);
 
+  if (points.length === 0) {
+    console.warn(
+      `[aq-ingest] No grid points returned — skipping Redis write to preserve existing data`,
+    );
+    return { stored: 0 };
+  }
+
   await redis.set(`aq:pm25:${targetDate}`, points, { ex: CACHE_TTL_SECONDS });
   console.log(`[aq-ingest] Stored in Redis as aq:pm25:${targetDate} (TTL 48h)`);
 

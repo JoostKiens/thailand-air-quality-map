@@ -60,8 +60,8 @@ export function createLandMaskLayer(beforeId?: string) {
 const AQ_STEP = 0.4;
 const AQ_LNG_MIN = 89.0;
 const AQ_LAT_MIN = 1.0;
-const AQ_LNG_COUNT = 63;
-const AQ_LAT_COUNT = 73;
+const AQ_LNG_COUNT = 63; // (114 - 89) / 0.4 + 1
+const AQ_LAT_COUNT = 73; // ( 30 -  1) / 0.4 + 1
 const AQ_LNG_MAX = AQ_LNG_MIN + (AQ_LNG_COUNT - 1) * AQ_STEP; // 113.8
 const AQ_LAT_MAX = AQ_LAT_MIN + (AQ_LAT_COUNT - 1) * AQ_STEP; //  29.8
 

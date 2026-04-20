@@ -7,18 +7,28 @@ const LNG_POINTS = [88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 1
 const LAT_POINTS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
 
 // 0.4° grid for PM2.5 — matches Open-Meteo CAMS native resolution
-// bbox [89,1,114,30] → 63 × 73 = 4,599 points; cell edges align to viewport corners
+// bbox [89,1,114,30] → 63 × 73 = 4,599 points; 16 batches of 300.
+// Open-Meteo free tier: 600 calls/min, 5k/hour, 10k/day — each location = 1 call.
+// 4,599 calls per run = ~46% of daily budget; fine for once-daily scheduled ingest.
 const AQ_STEP = 0.4;
+const AQ_LNG_MIN = 89;
+const AQ_LAT_MIN = 1;
+const AQ_LNG_COUNT = 63; // (114 - 89) / 0.4 + 1
+const AQ_LAT_COUNT = 73; // ( 30 -  1) / 0.4 + 1
 const AQ_LNG_POINTS = Array.from(
-  { length: 63 },
-  (_, i) => Math.round((89 + i * AQ_STEP) * 10) / 10,
+  { length: AQ_LNG_COUNT },
+  (_, i) => Math.round((AQ_LNG_MIN + i * AQ_STEP) * 10) / 10,
 );
-const AQ_LAT_POINTS = Array.from({ length: 73 }, (_, i) => Math.round((1 + i * AQ_STEP) * 10) / 10);
+const AQ_LAT_POINTS = Array.from(
+  { length: AQ_LAT_COUNT },
+  (_, i) => Math.round((AQ_LAT_MIN + i * AQ_STEP) * 10) / 10,
+);
 
-// 300 locations per request keeps URL under ~3.5KB and reduces total requests to 16
+// 300 locations per request → 16 batches total.
+// Pause must be ≥30s: 300 calls/batch ÷ 600 calls/min = 30s minimum; 35s adds safety margin.
 const AQ_BATCH_SIZE = 300;
-const AQ_BATCH_CONCURRENCY = 1; // sequential — minimises request count against rate limits
-const AQ_BATCH_PAUSE_MS = 3_000; // polite delay between batches to avoid burst rate-limiting
+const AQ_BATCH_CONCURRENCY = 1;
+const AQ_BATCH_PAUSE_MS = 35_000;
 // Short retries handle transient spikes; last entry (10 min) covers quota window resets
 const AQ_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 600_000];
 
@@ -138,6 +148,9 @@ async function fetchAQBatch(
         const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 5_000; // +5s buffer
         delay = msUntilNextHour;
         delaySource = `body hint "next hour" (${Math.round(delay / 1000)}s until :00)`;
+      } else if (/minute|minutely/i.test(reason)) {
+        delay = 65_000; // 1 minute + 5s buffer
+        delaySource = `body hint "minutely" (65s)`;
       } else {
         delay = AQ_RETRY_DELAYS_MS[attempt] ?? 0;
         delaySource = reason ? `body="${reason}", fallback` : 'fallback';
@@ -188,6 +201,10 @@ export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]
       lngs: allLngs.slice(i, i + AQ_BATCH_SIZE),
     });
   }
+
+  console.log(
+    `[openmeteo] AQ grid: ${allLats.length} points (${AQ_LNG_COUNT}×${AQ_LAT_COUNT}), ${batches.length} batches of ≤${AQ_BATCH_SIZE}`,
+  );
 
   // Run batches sequentially with a polite pause between each to avoid burst rate-limiting.
   // 16 batches × 3 s = ~48 s total — acceptable for a background ingest job.

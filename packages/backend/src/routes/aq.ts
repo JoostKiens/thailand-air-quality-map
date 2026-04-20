@@ -1,10 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { PM25GridPoint } from '@thailand-aq/types';
 import { redis } from '../cache/client.js';
-import { fetchAirQualityGrid } from '../lib/openmeteo.js';
 import { parseBbox } from '../lib/bbox.js';
 
-const CACHE_TTL_SECONDS = 48 * 60 * 60; // 48h
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function aqRoutes(app: FastifyInstance): void {
@@ -16,12 +14,12 @@ export function aqRoutes(app: FastifyInstance): void {
       return reply.status(400).send({ error: 'date param required (YYYY-MM-DD)' });
     }
 
-    let points = await redis.get<PM25GridPoint[]>(`aq:pm25:${date}`);
+    const points = await redis.get<PM25GridPoint[]>(`aq:pm25:${date}`);
 
-    if (points === null) {
-      // Cache miss — fetch live and populate
-      points = await fetchAirQualityGrid(date);
-      await redis.set(`aq:pm25:${date}`, points, { ex: CACHE_TTL_SECONDS });
+    if (points === null || points.length === 0) {
+      return reply
+        .status(404)
+        .send({ error: 'No AQ grid data for this date. Run the ingest job.' });
     }
 
     const bbox = parseBbox(rawBbox);
