@@ -129,32 +129,25 @@ async function fetchAQBatch(
   for (let attempt = 0; attempt <= AQ_RETRY_DELAYS_MS.length; attempt++) {
     res = await fetch(url);
     if (res.status !== 429) break;
-    const retryAfterRaw = res.headers.get('Retry-After');
-    const retryAfterSec = Number(retryAfterRaw);
 
+    const body = (await res.json().catch(() => null)) as { reason?: string } | null;
+    const reason = body?.reason ?? '';
     let delay: number;
     let delaySource: string;
-    if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
-      delay = retryAfterSec * 1000;
-      delaySource = `Retry-After header (${retryAfterSec}s)`;
+    if (/tomorrow|daily/i.test(reason)) {
+      // Daily quota exhausted — no point retrying until UTC midnight
+      console.warn(`[openmeteo] 429 daily limit: "${reason}" — skipping batch`);
+      return [];
+    } else if (/next hour/i.test(reason)) {
+      const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 5_000; // +5s buffer
+      delay = msUntilNextHour;
+      delaySource = `body hint "next hour" (${Math.round(delay / 1000)}s until :00)`;
+    } else if (/minute|minutely/i.test(reason)) {
+      delay = 65_000; // 1 minute + 5s buffer
+      delaySource = `body hint "minutely" (65s)`;
     } else {
-      const body = (await res.json().catch(() => null)) as { reason?: string } | null;
-      const reason = body?.reason ?? '';
-      if (/tomorrow|daily/i.test(reason)) {
-        // Daily quota exhausted — no point retrying until UTC midnight
-        console.warn(`[openmeteo] 429 daily limit: "${reason}" — skipping batch`);
-        return [];
-      } else if (/next hour/i.test(reason)) {
-        const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 5_000; // +5s buffer
-        delay = msUntilNextHour;
-        delaySource = `body hint "next hour" (${Math.round(delay / 1000)}s until :00)`;
-      } else if (/minute|minutely/i.test(reason)) {
-        delay = 65_000; // 1 minute + 5s buffer
-        delaySource = `body hint "minutely" (65s)`;
-      } else {
-        delay = AQ_RETRY_DELAYS_MS[attempt] ?? 0;
-        delaySource = reason ? `body="${reason}", fallback` : 'fallback';
-      }
+      delay = AQ_RETRY_DELAYS_MS[attempt] ?? 0;
+      delaySource = reason ? `body="${reason}", fallback` : 'fallback';
     }
 
     console.warn(
