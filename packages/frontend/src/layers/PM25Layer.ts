@@ -5,7 +5,13 @@ import Supercluster from 'supercluster';
 import type { PM25GridPoint } from '@thailand-aq/types';
 import type { LatestMeasurement } from '../hooks/useAQI';
 import seaCountries from '../data/sea-land-mask.json';
-import { pm25ToRgba, pm25ToRgb, contrastColor, type RGBA } from '../lib/aqiColors';
+import {
+  pm25ToRgba,
+  pm25ToRgb,
+  pm25ToBorderRgba,
+  contrastColor,
+  type RGBA,
+} from '../lib/aqiColors';
 
 export { AQI_CATEGORIES } from '../lib/aqiColors';
 
@@ -173,7 +179,11 @@ export function createPM25BitmapLayer(data: PM25GridPoint[], beforeId?: string) 
 
 // --- Station clustering ---
 
-const CLUSTER_RADIUS = 40;
+const CLUSTER_RADIUS = 60;
+export const CLUSTER_MAX_ZOOM = 14;
+
+const SINGLE_RADIUS_PX = 15; // diameter 30px
+const CLUSTER_RADIUS_PX = 18; // diameter 36px
 
 // Minimal structural type for Supercluster output — discriminated on `cluster`.
 interface StationClusterFeature {
@@ -186,9 +196,27 @@ interface StationPointFeature {
 }
 type AnyStationFeature = StationClusterFeature | StationPointFeature;
 
-function clusterStations(data: LatestMeasurement[], zoom: number): AnyStationFeature[] {
+function pm25OfFeature(d: AnyStationFeature): number {
+  return d.properties.cluster ? d.properties.maxPm25 : d.properties.value;
+}
+
+// ScatterplotLayer + TextLayer stack — OpenAQ ground stations with Supercluster grouping.
+// Clusters: larger circle with border ring and two-line label (value + ×count).
+// Singles: smaller circle with single-line AQI value.
+export function createPM25StationsLayers(
+  data: LatestMeasurement[],
+  zoom: number,
+  onStationClick: (info: PickingInfo) => void,
+  onClusterClick: (
+    clusterId: number,
+    lngLat: [number, number],
+    expansionZoom: number,
+    leaves: LatestMeasurement[],
+  ) => void,
+): Layer[] {
   const sc = new Supercluster<LatestMeasurement, { maxPm25: number }>({
-    radius: CLUSTER_RADIUS, // px — Supercluster handles zoom-based splitting automatically
+    radius: CLUSTER_RADIUS,
+    maxZoom: CLUSTER_MAX_ZOOM,
     map: (props) => ({ maxPm25: props.value }),
     reduce: (acc, props) => {
       acc.maxPm25 = Math.max(acc.maxPm25, props.maxPm25);
@@ -203,27 +231,42 @@ function clusterStations(data: LatestMeasurement[], zoom: number): AnyStationFea
     })),
   );
 
-  return sc.getClusters([-180, -90, 180, 90], Math.floor(zoom)) as AnyStationFeature[];
-}
+  const clusters = sc.getClusters([-180, -90, 180, 90], Math.floor(zoom)) as AnyStationFeature[];
+  const clusterFeatures = clusters.filter(
+    (d): d is StationClusterFeature => !!d.properties.cluster,
+  );
 
-function pm25OfFeature(d: AnyStationFeature): number {
-  return d.properties.cluster ? d.properties.maxPm25 : d.properties.value;
-}
-
-// Uniform bubble radius — large enough for a 2-digit number.
-const STATION_RADIUS_PX = 14;
-
-// ScatterplotLayer + TextLayer pair — OpenAQ ground stations with Supercluster grouping.
-// Clusters show point count and are colored by worst-case PM2.5.
-// Individual stations show their rounded PM2.5 value.
-export function createPM25StationsLayers(
-  data: LatestMeasurement[],
-  zoom: number,
-  onClick: (info: PickingInfo) => void,
-  beforeId?: string,
-): Layer[] {
-  const clusters = clusterStations(data, zoom);
   const getPosition = (d: AnyStationFeature) => d.geometry.coordinates as [number, number];
+  const layerParams = { depthCompare: 'always' as const, depthWriteEnabled: false };
+
+  // 1. Border ring — clusters only, rendered below the fill circle
+  const clusterBorder = new ScatterplotLayer<StationClusterFeature>({
+    id: 'pm25-cluster-border',
+    data: clusterFeatures,
+    getPosition: (d) => d.geometry.coordinates as [number, number],
+    getRadius: CLUSTER_RADIUS_PX,
+    radiusUnits: 'pixels',
+    stroked: true,
+    filled: false,
+    getLineColor: (d) => pm25ToBorderRgba(d.properties.maxPm25, 255),
+    getLineWidth: 2,
+    lineWidthUnits: 'pixels',
+    parameters: layerParams,
+  });
+
+  // 2. Fill circles — all features
+  const onClick = (info: PickingInfo) => {
+    if (!info.object) return;
+    const feat = info.object as AnyStationFeature;
+    if (feat.properties.cluster) {
+      const id = feat.properties.cluster_id;
+      const expansionZoom = sc.getClusterExpansionZoom(id);
+      const leaves = sc.getLeaves(id, Infinity).map((f) => f.properties);
+      onClusterClick(id, info.coordinate as [number, number], expansionZoom, leaves);
+    } else {
+      onStationClick(info);
+    }
+  };
 
   const scatterplot = new ScatterplotLayer<AnyStationFeature>({
     id: 'pm25-stations',
@@ -231,19 +274,19 @@ export function createPM25StationsLayers(
     getPosition,
     getFillColor: (d) => pm25ToRgba(pm25OfFeature(d), STATION_ALPHA),
     getLineColor: (d) => contrastColor(pm25ToRgb(pm25OfFeature(d))),
-    getRadius: STATION_RADIUS_PX,
+    getRadius: (d) => (d.properties.cluster ? CLUSTER_RADIUS_PX : SINGLE_RADIUS_PX),
     radiusUnits: 'pixels',
     lineWidthUnits: 'pixels',
-    getLineWidth: 2,
+    getLineWidth: (d) => (d.properties.cluster ? 0 : 2),
     stroked: true,
     pickable: true,
     onHover: (info) => !!info.picked,
     onClick,
-    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
-    ...({ beforeId } as object),
+    parameters: layerParams,
   });
 
-  const text = new TextLayer<AnyStationFeature>({
+  // 3. Value label — shifted up for clusters to make room for count line
+  const valueText = new TextLayer<AnyStationFeature>({
     id: 'pm25-stations-labels',
     data: clusters,
     getPosition,
@@ -252,14 +295,33 @@ export function createPM25StationsLayers(
         ? String(Math.round(d.properties.maxPm25))
         : String(Math.round(d.properties.value)),
     getColor: (d) => contrastColor(pm25ToRgb(pm25OfFeature(d))),
-    getSize: 11,
+    getPixelOffset: (d) => (d.properties.cluster ? [0, -4] : [0, 1]),
+    getSize: 12,
     fontWeight: 'bold',
     fontFamily: 'sans-serif',
     getTextAnchor: 'middle',
     getAlignmentBaseline: 'center',
-    parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
-    ...({ beforeId } as object),
+    parameters: layerParams,
   });
 
-  return [scatterplot, text];
+  // 4. Count label — clusters only, below value label
+  const countText = new TextLayer<StationClusterFeature>({
+    id: 'pm25-cluster-count',
+    data: clusterFeatures,
+    getPosition: (d) => d.geometry.coordinates as [number, number],
+    getText: (d) => `x${d.properties.point_count}`,
+    getColor: (d) => {
+      const [r, g, b] = contrastColor(pm25ToRgb(d.properties.maxPm25));
+      return [r, g, b, 191] as [number, number, number, number]; // 75% alpha
+    },
+    getPixelOffset: [0, 7],
+    getSize: 10,
+    fontWeight: 'normal',
+    fontFamily: 'sans-serif',
+    getTextAnchor: 'middle',
+    getAlignmentBaseline: 'center',
+    parameters: layerParams,
+  });
+
+  return [clusterBorder, scatterplot, valueText, countText];
 }

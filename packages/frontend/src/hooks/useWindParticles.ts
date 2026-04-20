@@ -167,11 +167,11 @@ function stepParticles(
 // ─── hook ─────────────────────────────────────────────────────────────────────
 
 export function useWindParticles(
+  overlay: MapboxOverlay | null,
   map: mapboxgl.Map | null,
   wind: WindVector[] | undefined,
   config: { visible: boolean; opacity: number },
 ): void {
-  const overlayRef = useRef<MapboxOverlay | null>(null);
   // Use a single mutable ref object to avoid stale closure issues in the rAF loop.
   const stateRef = useRef({
     particles: [] as Particle[],
@@ -186,14 +186,9 @@ export function useWindParticles(
   stateRef.current.visible = config.visible;
   stateRef.current.opacity = config.opacity;
 
-  // Non-interleaved overlay: renders on its own canvas above the map, fully
-  // independent of the main interleaved overlay. Two interleaved overlays on
-  // the same map conflict in Mapbox's render loop — this avoids that entirely.
+  // Track map zoom/viewport for particle spawning and OOB culling.
   useEffect(() => {
     if (!map) return;
-    const ov = new MapboxOverlay({ layers: [] });
-    map.addControl(ov);
-    overlayRef.current = ov;
     stateRef.current.zoom = map.getZoom();
     stateRef.current.viewport = mapViewport(map);
     const onMove = () => {
@@ -205,8 +200,6 @@ export function useWindParticles(
     return () => {
       map.off('zoom', onMove);
       map.off('move', onMove);
-      map.removeControl(ov);
-      overlayRef.current = null;
     };
   }, [map]);
 
@@ -217,10 +210,11 @@ export function useWindParticles(
     stateRef.current.particles = initParticles(stateRef.current.viewport);
   }, [wind]);
 
-  // Animation loop — runs as long as the map and wind data are present.
+  // Animation loop — runs as long as the overlay, map, and wind data are present.
   // Visibility changes are handled inside the tick to avoid restarting the loop.
   useEffect(() => {
-    if (!map || !wind?.length) return;
+    if (!overlay || !map || !wind?.length) return;
+    const ov = overlay; // capture non-null reference for the rAF closure
 
     let animId: number;
     let lastTime = 0;
@@ -230,35 +224,32 @@ export function useWindParticles(
       lastTime = time;
 
       const { grid, particles, visible, opacity, zoom, viewport } = stateRef.current;
-      const ov = overlayRef.current;
 
-      if (ov) {
-        if (!visible || !grid) {
-          ov.setProps({ layers: [] });
-        } else {
-          const zoomScale = Math.pow(2, BASE_ZOOM - zoom);
-          const dtScale = (dt / 16.67) * zoomScale;
-          stepParticles(particles, grid, dtScale, viewport);
+      if (!visible || !grid) {
+        ov.setProps({ layers: [] });
+      } else {
+        const zoomScale = Math.pow(2, BASE_ZOOM - zoom);
+        const dtScale = (dt / 16.67) * zoomScale;
+        stepParticles(particles, grid, dtScale, viewport);
 
-          const layer = new PathLayer<Particle>({
-            id: 'wind-particles',
-            data: particles.filter((p) => p.trail.length >= 2),
-            getPath: (p) => p.trail,
-            getColor: (p) =>
-              [...COLOR, Math.round(opacity * 180 * (1 - p.age / p.maxAge))] as [
-                number,
-                number,
-                number,
-                number,
-              ],
-            widthUnits: 'pixels',
-            getWidth: 1.5,
-            parameters: { depthCompare: 'always' as const },
-            pickable: false,
-          });
+        const layer = new PathLayer<Particle>({
+          id: 'wind-particles',
+          data: particles.filter((p) => p.trail.length >= 2),
+          getPath: (p) => p.trail,
+          getColor: (p) =>
+            [...COLOR, Math.round(opacity * 180 * (1 - p.age / p.maxAge))] as [
+              number,
+              number,
+              number,
+              number,
+            ],
+          widthUnits: 'pixels',
+          getWidth: 1.5,
+          parameters: { depthCompare: 'always' as const },
+          pickable: false,
+        });
 
-          ov.setProps({ layers: [layer] });
-        }
+        ov.setProps({ layers: [layer] });
       }
 
       animId = requestAnimationFrame(tick);
@@ -266,5 +257,5 @@ export function useWindParticles(
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [map, wind]);
+  }, [overlay, map, wind]);
 }

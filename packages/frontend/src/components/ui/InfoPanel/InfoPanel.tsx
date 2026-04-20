@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore } from '../../../store/uiStore';
+import type { ClusterStation } from '../../../store/uiStore';
 import { AqiBadge } from './AqiBadge';
-import { AQI_CATEGORIES } from '../../../lib/aqiColors';
+import { AQI_CATEGORIES, pm25ToRgb } from '../../../lib/aqiColors';
 
 export function InfoPanel() {
   const selectedPoint = useUIStore((s) => s.selectedPoint);
@@ -55,6 +56,8 @@ export function InfoPanel() {
                   {selectedPoint.fire && 'Fire detection'}
                   {selectedPoint.station && 'AQI station'}
                   {selectedPoint.powerPlant && 'Power plant'}
+                  {selectedPoint.cluster &&
+                    `${selectedPoint.cluster.stations.length} stations nearby`}
                 </p>
                 {selectedPoint.station && (
                   <p className="text-xs font-medium text-gray-700 truncate">
@@ -145,10 +148,63 @@ export function InfoPanel() {
                   </span>
                 </Row>
               )}
+              {selectedPoint.cluster && (
+                <ClusterList
+                  stations={selectedPoint.cluster.stations}
+                  lngLat={selectedPoint.lngLat}
+                />
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ClusterList({
+  stations,
+  lngLat,
+}: {
+  stations: ClusterStation[];
+  lngLat: [number, number];
+}) {
+  const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
+  const sorted = [...stations].sort((a, b) => b.pm25 - a.pm25);
+  return (
+    <div className="space-y-1">
+      {sorted.map((s, i) => {
+        const [r, g, b] = pm25ToRgb(s.pm25);
+        return (
+          <motion.button
+            key={s.stationId}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: i * 0.03, duration: 0.15, ease: 'easeOut' }}
+            onClick={() =>
+              setSelectedPoint({
+                lngLat,
+                station: {
+                  stationName: s.stationName,
+                  pm25: s.pm25,
+                  unit: 'µg/m³',
+                  measuredAt: '',
+                },
+              })
+            }
+            className="w-full flex items-center gap-1.5 text-left hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
+          >
+            <span
+              className="shrink-0 w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: `rgb(${r},${g},${b})` }}
+            />
+            <span className="text-[11px] font-medium text-gray-700 w-8 shrink-0">
+              {Math.round(s.pm25)}
+            </span>
+            <span className="text-[11px] text-gray-500 truncate">{s.stationName}</span>
+          </motion.button>
+        );
+      })}
     </div>
   );
 }

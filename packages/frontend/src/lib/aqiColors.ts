@@ -18,15 +18,16 @@ interface AqiCategory {
   label: string;
   range: string; // display string in µg/m³
   rgb: RGB;
+  borderRgb: RGB; // ~20% darker, used for cluster border rings
 }
 
 export const AQI_CATEGORIES: AqiCategory[] = [
-  { label: 'Good', range: '0–12', rgb: [0, 228, 0] },
-  { label: 'Moderate', range: '12–35', rgb: [255, 255, 0] },
-  { label: 'Unhealthy (sensitive)', range: '35–55', rgb: [255, 126, 0] },
-  { label: 'Unhealthy', range: '55–150', rgb: [255, 0, 0] },
-  { label: 'Very unhealthy', range: '150–250', rgb: [143, 63, 151] },
-  { label: 'Hazardous', range: '250+', rgb: [126, 0, 35] },
+  { label: 'Good', range: '0–12', rgb: [0, 228, 0], borderRgb: [0, 182, 0] },
+  { label: 'Moderate', range: '12–35', rgb: [255, 255, 0], borderRgb: [204, 204, 0] },
+  { label: 'Unhealthy (sensitive)', range: '35–55', rgb: [255, 126, 0], borderRgb: [204, 101, 0] },
+  { label: 'Unhealthy', range: '55–150', rgb: [255, 0, 0], borderRgb: [204, 0, 0] },
+  { label: 'Very unhealthy', range: '150–250', rgb: [143, 63, 151], borderRgb: [114, 50, 121] },
+  { label: 'Hazardous', range: '250+', rgb: [126, 0, 35], borderRgb: [101, 0, 28] },
 ];
 
 // Upper PM2.5 breakpoints matching AQI_CATEGORIES order.
@@ -37,6 +38,18 @@ export function pm25ToRgb(pm25: number): RGB {
     if (pm25 <= PM25_BREAKPOINTS[i]) return AQI_CATEGORIES[i].rgb;
   }
   return AQI_CATEGORIES[AQI_CATEGORIES.length - 1].rgb;
+}
+
+export function pm25ToBorderRgb(pm25: number): RGB {
+  for (let i = 0; i < PM25_BREAKPOINTS.length; i++) {
+    if (pm25 <= PM25_BREAKPOINTS[i]) return AQI_CATEGORIES[i].borderRgb;
+  }
+  return AQI_CATEGORIES[AQI_CATEGORIES.length - 1].borderRgb;
+}
+
+export function pm25ToBorderRgba(pm25: number, alpha: number): RGBA {
+  const [r, g, b] = pm25ToBorderRgb(pm25);
+  return [r, g, b, alpha];
 }
 
 export function pm25ToRgba(pm25: number, alpha: number): RGBA {

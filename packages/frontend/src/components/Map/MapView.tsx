@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { PickingInfo } from 'deck.gl';
 import type { FirePoint, PowerPlantFeature } from '@thailand-aq/types';
 import type { LatestMeasurement } from '../../hooks/useAQI';
@@ -18,6 +19,7 @@ import {
   createLandMaskLayer,
   createPM25BitmapLayer,
   createPM25StationsLayers,
+  CLUSTER_MAX_ZOOM,
 } from '../../layers/PM25Layer';
 import { usePowerPlants } from '../../hooks/usePowerPlants';
 import { createPowerPlantsLayer } from '../../layers/PowerPlantsLayer';
@@ -39,6 +41,7 @@ export function MapView() {
   const beforeIdRef = useRef<string | undefined>(undefined);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [overlay, setOverlay] = useState<OverlayInstance | null>(null);
+  const [windOverlay, setWindOverlay] = useState<MapboxOverlay | null>(null);
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
@@ -59,7 +62,7 @@ export function MapView() {
   const zoom = useUIStore((s) => s.mapZoom);
   const setMapZoom = useUIStore((s) => s.setMapZoom);
 
-  useWindParticles(map, wind, windConfig);
+  useWindParticles(windOverlay, map, wind, windConfig);
 
   // Sync map padding with sidebar state
   useEffect(() => {
@@ -90,9 +93,7 @@ export function MapView() {
 
     const onStationClick = (info: PickingInfo) => {
       if (!info.object) return;
-      const feat = info.object as { properties: { cluster?: boolean } & LatestMeasurement };
-      if (feat.properties.cluster) return;
-      const d = feat.properties;
+      const d = (info.object as { properties: LatestMeasurement }).properties;
       deckPickedRef.current = true;
       setSelectedPoint({
         lngLat: [d.lng, d.lat],
@@ -103,6 +104,29 @@ export function MapView() {
           measuredAt: d.measuredAt,
         },
       });
+    };
+
+    const onClusterClick = (
+      _clusterId: number,
+      lngLat: [number, number],
+      expansionZoom: number,
+      leaves: LatestMeasurement[],
+    ) => {
+      deckPickedRef.current = true;
+      if (expansionZoom <= CLUSTER_MAX_ZOOM) {
+        mapRef.current?.flyTo({ center: lngLat, zoom: expansionZoom, duration: 500 });
+      } else {
+        setSelectedPoint({
+          lngLat,
+          cluster: {
+            stations: leaves.map((l) => ({
+              stationId: l.stationId,
+              stationName: l.stationName,
+              pm25: l.value,
+            })),
+          },
+        });
+      }
     };
 
     const onPowerPlantClick = (info: PickingInfo) => {
@@ -132,7 +156,7 @@ export function MapView() {
     }
 
     if (aqStationsConfig.visible && aqi) {
-      layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, beforeId));
+      layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick));
     }
 
     // getCursor overrides MapboxOverlay's default (which ignores isHovering entirely).
@@ -178,9 +202,14 @@ export function MapView() {
       if (!mounted) return;
       mapInstance.setPadding({ left: 240 });
       beforeIdRef.current = detectBeforeId(mapInstance);
+      // Wind overlay added first — Mapbox renders controls in add-order, so the
+      // main overlay (with AQI stations) will draw on top of wind particles.
+      const windOv = new MapboxOverlay({ layers: [] });
+      mapInstance.addControl(windOv);
       const ov = createOverlay({ layers: [] });
       mapInstance.addControl(ov);
       setMapZoom(mapInstance.getZoom());
+      setWindOverlay(windOv);
       setOverlay(ov);
       setMap(mapInstance);
     });
