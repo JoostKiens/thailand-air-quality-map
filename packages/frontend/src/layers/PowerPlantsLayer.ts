@@ -44,7 +44,7 @@ export function createPowerPlantsLayer(
   data: PowerPlantCollection,
   opacity: number,
   onClick: (info: PickingInfo) => void,
-  beforeId?: string,
+  setCursor?: (active: boolean) => void,
 ): Layer {
   return new IconLayer<PowerPlantFeature>({
     id: 'power-plants',
@@ -59,9 +59,11 @@ export function createPowerPlantsLayer(
     // alphaCutoff: 0 makes the entire icon bounding box pickable, not just
     // the opaque outline pixels — needed because the diamond icons are stroked only.
     alphaCutoff: 0,
-    onHover: (info) => !!info.picked,
+    onHover: (info) => {
+      setCursor?.(!!info.picked);
+      return !!info.picked;
+    },
     onClick,
     parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
-    ...({ beforeId } as object),
   });
 }

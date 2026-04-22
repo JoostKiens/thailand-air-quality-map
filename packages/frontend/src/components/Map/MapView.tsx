@@ -95,6 +95,27 @@ export function MapView() {
     if (!dataOverlay) return;
     const layers = [];
 
+    // Debounced cursor: true fires immediately; false is deferred 50ms so that any
+    // true from another overlapping layer in the same event batch cancels the reset.
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    const setCursor = (active: boolean) => {
+      const canvas = mapRef.current?.getCanvas();
+      if (!canvas) return;
+      if (active) {
+        if (hideTimer !== null) {
+          clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+        canvas.style.cursor = 'pointer';
+      } else {
+        if (hideTimer !== null) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          canvas.style.cursor = 'grab';
+          hideTimer = null;
+        }, 50);
+      }
+    };
+
     const onFireClick = (info: PickingInfo) => {
       if (!info.object) return;
       const d = info.object as FirePoint;
@@ -161,23 +182,26 @@ export function MapView() {
 
     if (powerPlantsConfig.visible && powerPlants) {
       layers.push(
-        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick),
+        createPowerPlantsLayer(
+          powerPlants,
+          powerPlantsConfig.opacity,
+          onPowerPlantClick,
+          setCursor,
+        ),
       );
     }
 
     if (firesConfig.visible && fires) {
-      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick));
+      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick, setCursor));
     }
 
     if (aqStationsConfig.visible && aqi) {
-      layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick));
+      layers.push(
+        ...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick, setCursor),
+      );
     }
 
-    dataOverlay.setProps({
-      layers,
-      getCursor: ({ isHovering }: { isDragging: boolean; isHovering: boolean }) =>
-        isHovering ? 'pointer' : 'grab',
-    });
+    dataOverlay.setProps({ layers });
   }, [
     dataOverlay,
     fires,

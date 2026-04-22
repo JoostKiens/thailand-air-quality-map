@@ -213,6 +213,7 @@ export function createPM25StationsLayers(
     expansionZoom: number,
     leaves: LatestMeasurement[],
   ) => void,
+  setCursor?: (active: boolean) => void,
 ): Layer[] {
   const sc = new Supercluster<LatestMeasurement, { maxPm25: number }>({
     radius: CLUSTER_RADIUS,
@@ -280,7 +281,10 @@ export function createPM25StationsLayers(
     getLineWidth: (d) => (d.properties.cluster ? 0 : 2),
     stroked: true,
     pickable: true,
-    onHover: (info) => !!info.picked,
+    onHover: (info) => {
+      setCursor?.(!!info.picked);
+      return !!info.picked;
+    },
     onClick,
     parameters: layerParams,
   });
