@@ -20,14 +20,11 @@ const redisUrl = process.env.UPSTASH_REDIS_URL;
 if (!redisUrl) throw new Error('Missing UPSTASH_REDIS_URL env var');
 console.log(`[scheduler] Connecting to Redis (${redisUrl.split('@').pop()})...`);
 
-// BullMQ requires maxRetriesPerRequest: null and a live ioredis connection.
-// enableReadyCheck: false is required for Upstash (serverless Redis).
-const makeConnection = () =>
-  new IORedis(redisUrl, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-    tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
-  });
+const connectionOptions = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Job definitions
@@ -66,7 +63,7 @@ const JOBS = [
 // ---------------------------------------------------------------------------
 
 // Verify connection before registering jobs
-const testConn = makeConnection();
+const testConn = new IORedis(redisUrl, connectionOptions);
 await new Promise<void>((resolve, reject) => {
   testConn.once('ready', () => {
     console.log('[scheduler] Redis connected');
@@ -77,32 +74,41 @@ await new Promise<void>((resolve, reject) => {
 });
 await testConn.quit();
 
-for (const job of JOBS) {
-  const queue = new Queue(job.name, { connection: makeConnection() });
+// Single queue connection used only for scheduler registration, then closed.
+const queueConnection = new IORedis(redisUrl, connectionOptions);
+const queue = new Queue('ingest', { connection: queueConnection });
 
-  // upsertJobScheduler replaces any existing schedule for this ID, making the
-  // setup idempotent — safe to restart the scheduler without creating duplicates.
+for (const job of JOBS) {
   await queue.upsertJobScheduler(job.name, { pattern: job.cron });
   console.log(`[scheduler] ${job.name} registered (${job.cron})`);
-
-  const worker = new Worker(
-    job.name,
-    async (bullJob) => {
-      console.log(`[${job.name}] starting job ${bullJob.id}`);
-      const result = await job.run();
-      console.log(`[${job.name}] done`, result);
-    },
-    {
-      connection: makeConnection(),
-      // Prevent overlapping runs: if a job is still running when the next
-      // trigger fires, BullMQ keeps the new job queued until the worker is free.
-      concurrency: 1,
-    },
-  );
-
-  worker.on('failed', (bullJob, err) => {
-    console.error(`[${job.name}] job ${bullJob?.id} failed:`, err);
-  });
 }
+
+await queue.close();
+await queueConnection.quit();
+
+// Single persistent worker connection — blocking commands require their own connection.
+const workerConnection = new IORedis(redisUrl, connectionOptions);
+const worker = new Worker(
+  'ingest',
+  async (bullJob) => {
+    const job = JOBS.find((j) => j.name === bullJob.name);
+    if (!job) {
+      throw new Error(`Unknown job name: ${bullJob.name}`);
+    }
+    console.log(`[${job.name}] starting job ${bullJob.id}`);
+    const result = await job.run();
+    console.log(`[${job.name}] done`, result);
+  },
+  {
+    connection: workerConnection,
+    concurrency: 1,
+    // 5-minute polling interval — drastically reduces idle Redis commands vs default 30s.
+    stalledInterval: 300_000,
+  },
+);
+
+worker.on('failed', (bullJob, err) => {
+  console.error(`[${bullJob?.name ?? 'unknown'}] job ${bullJob?.id} failed:`, err);
+});
 
 console.log('[scheduler] All jobs registered. Waiting for triggers...');
