@@ -32,7 +32,7 @@ interface OpenAQResponse {
   results: OpenAQLocation[];
 }
 
-interface OpenAQMeasurement {
+interface OpenAQDayResult {
   value: number;
   period: {
     datetimeFrom: { utc: string };
@@ -40,27 +40,27 @@ interface OpenAQMeasurement {
   } | null;
 }
 
-interface OpenAQMeasurementsResponse {
+interface OpenAQDaysResponse {
   meta: OpenAQMeta;
-  results: OpenAQMeasurement[];
+  results: OpenAQDayResult[];
 }
 
-export interface SensorMeasurement {
+export interface SensorDailyAverage {
   value: number;
-  datetimeUtc: string; // datetimeFrom.utc
+  dateUtc: string; // period.datetimeTo.utc — end of local day, falls within the same UTC calendar date
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function fetchSensorMeasurements(
+export async function fetchSensorDailyAverage(
   apiKey: string,
   sensorId: number,
   dateFrom: string,
   dateTo: string,
-): Promise<SensorMeasurement[]> {
+): Promise<SensorDailyAverage[]> {
   const url =
-    `${BASE_URL}/sensors/${sensorId}/measurements` +
-    `?datetime_from=${encodeURIComponent(dateFrom)}&datetime_to=${encodeURIComponent(dateTo)}&limit=1000`;
+    `${BASE_URL}/sensors/${sensorId}/days` +
+    `?datetime_from=${encodeURIComponent(dateFrom)}&datetime_to=${encodeURIComponent(dateTo)}&limit=10`;
 
   // Retry backoff: 10s, 20s, 40s, 60s — OpenAQ free tier enforces per-minute quotas
   const RETRY_DELAYS = [10_000, 20_000, 40_000, 60_000];
@@ -91,10 +91,16 @@ export async function fetchSensorMeasurements(
     if (!res.ok)
       throw new Error(`OpenAQ sensor ${sensorId} error: ${res.status} ${res.statusText}`);
 
-    const data = (await res.json()) as OpenAQMeasurementsResponse;
-    return data.results
-      .filter((r) => r.period !== null)
-      .map((r) => ({ value: r.value, datetimeUtc: r.period!.datetimeFrom.utc }));
+    const data = (await res.json()) as OpenAQDaysResponse;
+
+    return (
+      data.results
+        .filter((r) => r.period !== null)
+        // Use datetimeTo.utc (end of local day) so the timestamp falls within the same
+        // UTC calendar date as the local day. datetimeFrom.utc would be ~7 h earlier
+        // (local midnight in UTC+7), falling outside the UTC-day window used by the API.
+        .map((r) => ({ value: r.value, dateUtc: r.period!.datetimeTo.utc }))
+    );
   }
 }
 

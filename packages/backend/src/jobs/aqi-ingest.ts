@@ -1,7 +1,7 @@
 import pRetry, { AbortError } from 'p-retry';
 import { supabase } from '../db/client.js';
 import { redis } from '../cache/client.js';
-import { fetchLocations, fetchSensorMeasurements, PARAMETERS } from '../lib/openaq.js';
+import { fetchLocations, fetchSensorDailyAverage, PARAMETERS } from '../lib/openaq.js';
 
 const BATCH_SIZE = 500;
 const CONCURRENCY = 1; // sequential — OpenAQ free tier is strictly rate limited
@@ -106,7 +106,7 @@ export async function runAqiIngest(date?: string): Promise<{
     `[aqi-ingest] Fetching measurements for ${sensorsToFetch.length} sensors (${CONCURRENCY} concurrent)...`,
   );
 
-  // --- fetch measurements per sensor ---
+  // --- fetch daily average per sensor ---
   const measurementRows: {
     station_id: string;
     sensor_id: number;
@@ -120,7 +120,7 @@ export async function runAqiIngest(date?: string): Promise<{
     const readings = await pRetry(
       async () => {
         try {
-          return await fetchSensorMeasurements(apiKey, s.sensorId, dateFrom, dateTo);
+          return await fetchSensorDailyAverage(apiKey, s.sensorId, dateFrom, dateTo);
         } catch (err) {
           if (err instanceof Error && /\b4\d\d\b/.test(err.message))
             throw new AbortError(err.message);
@@ -144,7 +144,7 @@ export async function runAqiIngest(date?: string): Promise<{
         parameter: s.parameter,
         value: r.value,
         unit: s.unit,
-        measured_at: r.datetimeUtc,
+        measured_at: r.dateUtc,
       });
     }
   });
