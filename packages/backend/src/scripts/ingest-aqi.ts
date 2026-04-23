@@ -1,8 +1,11 @@
+import 'dotenv/config';
 import { runAqiIngest } from '../jobs/aqi-ingest.js';
 
-const date = process.argv[2]; // optional YYYY-MM-DD; defaults to today inside the job
-const result = await runAqiIngest(date);
-console.log(
-  `Done: ${result.stationsUpserted} stations, ${result.measurementsInserted} measurements`,
-);
-process.exit(0);
+try {
+  const result = await runAqiIngest(process.argv[2]);
+  console.log('[aqi-ingest] done', result);
+  process.exit(0);
+} catch (err) {
+  console.error('[aqi-ingest] failed', err);
+  process.exit(1);
+}

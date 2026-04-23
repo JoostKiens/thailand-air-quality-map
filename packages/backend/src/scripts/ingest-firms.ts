@@ -1,6 +1,11 @@
+import 'dotenv/config';
 import { runFirmsIngest } from '../jobs/firms-ingest.js';
 
-const date = process.argv[2]; // optional YYYY-MM-DD; defaults to today inside the job
-const result = await runFirmsIngest(date);
-console.log(`Done: ${result.inserted} rows upserted`);
-process.exit(0);
+try {
+  const result = await runFirmsIngest(process.argv[2]);
+  console.log('[firms-ingest] done', result);
+  process.exit(0);
+} catch (err) {
+  console.error('[firms-ingest] failed', err);
+  process.exit(1);
+}

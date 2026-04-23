@@ -1,6 +1,11 @@
+import 'dotenv/config';
 import { runWindIngest } from '../jobs/wind-ingest.js';
 
-const date = process.argv[2]; // optional YYYY-MM-DD; defaults to today
-const result = await runWindIngest(date);
-console.log(`Done: ${result.points} wind vectors stored`);
-process.exit(0);
+try {
+  const result = await runWindIngest(process.argv[2]);
+  console.log('[wind-ingest] done', result);
+  process.exit(0);
+} catch (err) {
+  console.error('[wind-ingest] failed', err);
+  process.exit(1);
+}

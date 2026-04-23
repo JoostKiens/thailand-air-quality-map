@@ -1,3 +1,4 @@
+import pRetry, { AbortError } from 'p-retry';
 import { redis } from '../cache/client.js';
 import { fetchWindGridForDate } from '../lib/openmeteo.js';
 
@@ -23,7 +24,26 @@ export async function runWindIngest(
   const ttl = isToday ? CACHE_TTL_TODAY : CACHE_TTL_HISTORICAL;
 
   console.log(`[wind-ingest] Fetching wind grid for ${targetDate} from Open-Meteo...`);
-  const vectors = await fetchWindGridForDate(targetDate, { calendarDayUtc });
+  const vectors = await pRetry(
+    async () => {
+      try {
+        return await fetchWindGridForDate(targetDate, { calendarDayUtc });
+      } catch (err) {
+        if (err instanceof Error && /\b4\d\d\b/.test(err.message))
+          throw new AbortError(err.message);
+        throw err;
+      }
+    },
+    {
+      retries: 3,
+      minTimeout: 2000,
+      factor: 2,
+      onFailedAttempt: (err) =>
+        console.warn(
+          `[wind-ingest] attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
+        ),
+    },
+  );
   console.log(`[wind-ingest] Fetched ${vectors.length} wind vectors`);
 
   await redis.set(windCacheKey(targetDate), vectors, { ex: ttl });

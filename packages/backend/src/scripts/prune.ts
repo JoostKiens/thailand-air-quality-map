@@ -1,7 +1,11 @@
+import 'dotenv/config';
 import { runPrune } from '../jobs/prune.js';
 
-const result = await runPrune();
-console.log(
-  `Done: ${result.firePointsDeleted} fire_points deleted, ${result.measurementsDeleted} measurements deleted`,
-);
-process.exit(0);
+try {
+  const result = await runPrune();
+  console.log('[prune] done', result);
+  process.exit(0);
+} catch (err) {
+  console.error('[prune] failed', err);
+  process.exit(1);
+}

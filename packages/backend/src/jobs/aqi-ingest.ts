@@ -1,3 +1,4 @@
+import pRetry, { AbortError } from 'p-retry';
 import { supabase } from '../db/client.js';
 import { redis } from '../cache/client.js';
 import { fetchLocations, fetchSensorMeasurements, PARAMETERS } from '../lib/openaq.js';
@@ -38,7 +39,26 @@ export async function runAqiIngest(date?: string): Promise<{
   const dateTo = `${targetDate}T23:59:59Z`;
 
   console.log(`[aqi-ingest] Fetching OpenAQ locations for ${targetDate}...`);
-  const locations = await fetchLocations();
+  const locations = await pRetry(
+    async () => {
+      try {
+        return await fetchLocations();
+      } catch (err) {
+        if (err instanceof Error && /\b4\d\d\b/.test(err.message))
+          throw new AbortError(err.message);
+        throw err;
+      }
+    },
+    {
+      retries: 3,
+      minTimeout: 2000,
+      factor: 2,
+      onFailedAttempt: (err) =>
+        console.warn(
+          `[aqi-ingest] locations attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
+        ),
+    },
+  );
   console.log(`[aqi-ingest] Fetched ${locations.length} locations`);
 
   // --- upsert stations ---
@@ -97,7 +117,26 @@ export async function runAqiIngest(date?: string): Promise<{
   }[] = [];
 
   await withConcurrency(sensorsToFetch, CONCURRENCY, async (s) => {
-    const readings = await fetchSensorMeasurements(apiKey, s.sensorId, dateFrom, dateTo);
+    const readings = await pRetry(
+      async () => {
+        try {
+          return await fetchSensorMeasurements(apiKey, s.sensorId, dateFrom, dateTo);
+        } catch (err) {
+          if (err instanceof Error && /\b4\d\d\b/.test(err.message))
+            throw new AbortError(err.message);
+          throw err;
+        }
+      },
+      {
+        retries: 3,
+        minTimeout: 2000,
+        factor: 2,
+        onFailedAttempt: (err) =>
+          console.warn(
+            `[aqi-ingest] sensor ${s.sensorId} attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
+          ),
+      },
+    );
     for (const r of readings) {
       measurementRows.push({
         station_id: String(s.locationId),
