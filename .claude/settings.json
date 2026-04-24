@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm --filter frontend typecheck *)",
+      "Bash(pnpm --filter backend typecheck *)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm --filter frontend lint *)",
+      "Bash(pnpm --filter backend lint *)"
+    ]
+  }
+}
