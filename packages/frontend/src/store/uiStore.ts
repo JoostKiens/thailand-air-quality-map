@@ -9,8 +9,21 @@ export interface ClusterStation {
 export interface SelectedPoint {
   lngLat: [number, number];
   fire?: { frp: number | null; confidence: string | null; countryId: string; detectedAt: string };
-  station?: { stationName: string; pm25: number; unit: string; measuredAt: string };
-  powerPlant?: { name: string; fuelType: string; capacityMw: number | null };
+  station?: {
+    stationId: string;
+    stationName: string;
+    pm25: number;
+    unit: string;
+    measuredAt: string;
+  };
+  powerPlant?: {
+    name: string;
+    fuelType: string;
+    capacityMw: number | null;
+    owner: string | null;
+    commissionedYear: number | null;
+    country: string;
+  };
   cluster?: { stations: ClusterStation[] };
 }
 

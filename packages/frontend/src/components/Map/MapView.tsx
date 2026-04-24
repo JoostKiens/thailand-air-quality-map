@@ -117,6 +117,7 @@ export function MapView() {
       setSelectedPoint({
         lngLat: [d.lng, d.lat],
         station: {
+          stationId: d.stationId,
           stationName: d.stationName,
           pm25: d.value,
           unit: d.unit,
@@ -155,7 +156,14 @@ export function MapView() {
       deckPickedRef.current = true;
       setSelectedPoint({
         lngLat: [feat.geometry.coordinates[0], feat.geometry.coordinates[1]],
-        powerPlant: { name: p.name, fuelType: p.fuel_type, capacityMw: p.capacity_mw },
+        powerPlant: {
+          name: p.name,
+          fuelType: p.fuel_type,
+          capacityMw: p.capacity_mw,
+          owner: p.owner,
+          commissionedYear: p.commissioned_year,
+          country: p.country,
+        },
       });
     };
 

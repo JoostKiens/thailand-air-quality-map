@@ -14,7 +14,7 @@
 export type RGB = [number, number, number];
 export type RGBA = [number, number, number, number];
 
-interface AqiCategory {
+export interface AqiCategory {
   label: string;
   range: string; // display string in µg/m³
   rgb: RGB;
@@ -55,6 +55,15 @@ export function pm25ToBorderRgba(pm25: number, alpha: number): RGBA {
 export function pm25ToRgba(pm25: number, alpha: number): RGBA {
   const [r, g, b] = pm25ToRgb(pm25);
   return [r, g, b, alpha];
+}
+
+const PM25_CAT_BREAKPOINTS = [12.0, 35.4, 55.4, 150.4, 250.4];
+
+export function pm25ToCategory(pm25: number): AqiCategory {
+  return (
+    AQI_CATEGORIES.find((_, i) => pm25 <= (PM25_CAT_BREAKPOINTS[i] ?? Infinity)) ??
+    AQI_CATEGORIES[AQI_CATEGORIES.length - 1]
+  );
 }
 
 // Returns black text for light backgrounds, white for dark ones.
