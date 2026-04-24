@@ -55,7 +55,6 @@ export function createFiresLayer(
   opacity: number,
   zoom: number,
   onClick: (info: PickingInfo) => void,
-  setCursor?: (active: boolean) => void,
   radiusScale = 1,
 ): Layer[] {
   const baseRadius = baseRadiusForZoom(zoom);
@@ -72,13 +71,9 @@ export function createFiresLayer(
         getFillColor: (d) => ringColor(ring, d),
         updateTriggers: { getRadius: baseRadius },
         parameters: ADDITIVE_BLEND,
-        // All rings are pickable with onHover so cursor covers the full glow area;
+        // All rings are pickable so cursor covers the full glow area (outer ring = 4× radius);
         // onClick is wired only on the inner core to avoid duplicate events.
         pickable: true,
-        onHover: (info) => {
-          setCursor?.(!!info.picked);
-          return !!info.picked;
-        },
         onClick: i === 2 ? onClick : undefined,
       }),
   );

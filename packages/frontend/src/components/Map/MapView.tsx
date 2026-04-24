@@ -95,27 +95,6 @@ export function MapView() {
     if (!dataOverlay) return;
     const layers = [];
 
-    // Debounced cursor: true fires immediately; false is deferred 50ms so that any
-    // true from another overlapping layer in the same event batch cancels the reset.
-    let hideTimer: ReturnType<typeof setTimeout> | null = null;
-    const setCursor = (active: boolean) => {
-      const canvas = mapRef.current?.getCanvas();
-      if (!canvas) return;
-      if (active) {
-        if (hideTimer !== null) {
-          clearTimeout(hideTimer);
-          hideTimer = null;
-        }
-        canvas.style.cursor = 'pointer';
-      } else {
-        if (hideTimer !== null) clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => {
-          canvas.style.cursor = 'grab';
-          hideTimer = null;
-        }, 50);
-      }
-    };
-
     const onFireClick = (info: PickingInfo) => {
       if (!info.object) return;
       const d = info.object as FirePoint;
@@ -182,23 +161,16 @@ export function MapView() {
 
     if (powerPlantsConfig.visible && powerPlants) {
       layers.push(
-        createPowerPlantsLayer(
-          powerPlants,
-          powerPlantsConfig.opacity,
-          onPowerPlantClick,
-          setCursor,
-        ),
+        createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick),
       );
     }
 
     if (firesConfig.visible && fires) {
-      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick, setCursor));
+      layers.push(...createFiresLayer(fires, firesConfig.opacity, zoom, onFireClick));
     }
 
     if (aqStationsConfig.visible && aqi) {
-      layers.push(
-        ...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick, setCursor),
-      );
+      layers.push(...createPM25StationsLayers(aqi, zoom, onStationClick, onClusterClick));
     }
 
     dataOverlay.setProps({ layers });
@@ -245,6 +217,40 @@ export function MapView() {
       const heatmapOv = createOverlay({ layers: [] });
       mapInstance.addControl(heatmapOv);
 
+      // The deck.gl overlay *container* has pointer-events:none, but the canvas element
+      // inside it inherits pointer-events:auto by default (pointer-events is not inherited
+      // in CSS). That canvas sits on top of the Mapbox canvas and absorbs native mouse
+      // events, so map.on('mousemove') never fires. Explicitly set pointer-events:none on
+      // the deck.gl canvas so native events fall through to the Mapbox canvas, making
+      // Mapbox's own event system (and our mousemove handler) work as intended.
+      // deck.gl's _updateCursor() runs every animation frame and sets style.cursor = 'grab'
+      // on its canvas via JavaScript. Any style.cursor assignment we make gets immediately
+      // overridden. CSS !important in an author stylesheet outranks all JavaScript inline
+      // style assignments (important author > normal inline per the CSS cascade), so we
+      // inject one rule and toggle a class rather than fighting over style.cursor.
+      const cursorOverride = document.createElement('style');
+      cursorOverride.setAttribute('data-deck-cursor', '');
+      cursorOverride.textContent =
+        '.mapboxgl-map.deck-hovering .mapboxgl-canvas { cursor: pointer !important; }';
+      document.head.appendChild(cursorOverride);
+
+      const mapContainer = mapInstance.getContainer();
+      mapInstance.on('mousemove', (e) => {
+        let picked = false;
+        try {
+          picked = !!dataOv.pickObject({ x: e.point.x, y: e.point.y });
+        } catch {
+          // overlay not yet initialised
+        }
+        mapContainer.classList.toggle('deck-hovering', picked);
+      });
+      mapInstance.on('mouseout', () => {
+        mapContainer.classList.remove('deck-hovering');
+      });
+      mapInstance.on('dragstart', () => {
+        mapContainer.classList.remove('deck-hovering');
+      });
+
       setMapZoom(mapInstance.getZoom());
       setWindOverlay(windOv);
       setDataOverlay(dataOv);
@@ -269,6 +275,7 @@ export function MapView() {
 
     return () => {
       mounted = false;
+      document.head.querySelector('style[data-deck-cursor]')?.remove();
       setMap(null);
       setHeatmapOverlay(null);
       setDataOverlay(null);
