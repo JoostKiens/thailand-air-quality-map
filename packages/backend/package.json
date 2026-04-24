@@ -16,7 +16,13 @@
     "ingest:aq": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq.ts",
     "backfill": "node --env-file=.env.local --import=tsx/esm src/scripts/backfill.ts",
     "prune": "node --env-file=.env.local --import=tsx/esm src/scripts/prune.ts",
-    "ingest:power-plants": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-power-plants.ts"
+    "ingest:power-plants": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-power-plants.ts",
+    "railway:ingest:firms": "node --import=tsx/esm src/scripts/ingest-firms.ts",
+    "railway:ingest:aqi": "node --import=tsx/esm src/scripts/ingest-aqi.ts",
+    "railway:ingest:wind": "node --import=tsx/esm src/scripts/ingest-wind.ts",
+    "railway:ingest:aq": "node --import=tsx/esm src/scripts/ingest-aq.ts",
+    "railway:backfill": "node --import=tsx/esm src/scripts/backfill.ts",
+    "railway:prune": "node --import=tsx/esm src/scripts/prune.ts"
   },
   "dependencies": {
     "csv-parse": "^5.5.0",
