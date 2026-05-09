@@ -39,6 +39,8 @@ interface UIStore {
   setPlaying: (playing: boolean) => void;
   mapZoom: number;
   setMapZoom: (zoom: number) => void;
+  explainQuotaExceeded: boolean;
+  setExplainQuotaExceeded: (v: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -53,6 +55,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setPlaying: (playing) => set({ playing }),
   mapZoom: 5.5,
   setMapZoom: (zoom) => set({ mapZoom: zoom }),
+  explainQuotaExceeded: false,
+  setExplainQuotaExceeded: (v) => set({ explainQuotaExceeded: v }),
 }));
 
 const ICT_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7 — Bangkok / ICT

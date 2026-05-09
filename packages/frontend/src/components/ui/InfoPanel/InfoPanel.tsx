@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore } from '../../../store/uiStore';
 import type { ClusterStation } from '../../../store/uiStore';
 import { useTimeStore } from '../../../store/timeStore';
+import { ExplainButton } from '../../ExplainButton';
 import { AqiBadge } from './AqiBadge';
 import { pm25ToRgb, pm25ToCategory } from '../../../lib/aqiColors';
 import { reverseGeocode } from '../../../lib/geocode';
@@ -134,6 +135,7 @@ export function InfoPanel() {
             {selectedPoint.station && (
               <StationPanel
                 station={selectedPoint.station}
+                lngLat={selectedPoint.lngLat}
                 aqPoint={aqPoint}
                 windVec={windVec}
                 history={history}
@@ -260,16 +262,26 @@ function SecondarySection({
 
 function StationPanel({
   station,
+  lngLat,
   aqPoint,
   windVec,
   history,
 }: {
-  station: { stationName: string; pm25: number; unit: string; measuredAt: string };
+  station: {
+    stationId: string;
+    stationName: string;
+    pm25: number;
+    unit: string;
+    measuredAt: string;
+  };
+  lngLat: [number, number];
   aqPoint: { pm25: number } | null;
   windVec: { speedKmh: number; directionDeg: number } | null;
   history: HistoryState;
 }) {
   const cat = pm25ToCategory(station.pm25);
+  const explainQuotaExceeded = useUIStore((s) => s.explainQuotaExceeded);
+  const setExplainQuotaExceeded = useUIStore((s) => s.setExplainQuotaExceeded);
   return (
     <>
       <Row index={0}>
@@ -301,6 +313,15 @@ function StationPanel({
           )}
         </>
       )}
+      <hr className="border-gray-100 my-2" />
+      <ExplainButton
+        key={station.stationId}
+        stationId={station.stationId}
+        lat={lngLat[1]}
+        lng={lngLat[0]}
+        globalQuotaExceeded={explainQuotaExceeded}
+        onQuotaExceeded={() => setExplainQuotaExceeded(true)}
+      />
     </>
   );
 }

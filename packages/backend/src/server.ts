@@ -8,6 +8,7 @@ import { windRoutes } from './routes/wind';
 import { stationsRoutes } from './routes/stations';
 import { aqRoutes } from './routes/aq';
 import { powerPlantsRoutes } from './routes/power-plants';
+import { explainRoutes } from './routes/explain';
 
 const app = Fastify({ logger: true });
 
@@ -19,6 +20,7 @@ await app.register(windRoutes);
 await app.register(stationsRoutes);
 await app.register(aqRoutes);
 await app.register(powerPlantsRoutes);
+await app.register(explainRoutes);
 
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? '0.0.0.0';

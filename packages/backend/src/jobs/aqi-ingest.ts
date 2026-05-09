@@ -138,6 +138,7 @@ export async function runAqiIngest(date?: string): Promise<{
       },
     );
     for (const r of readings) {
+      if (r.value === null || r.value === undefined) continue;
       measurementRows.push({
         station_id: String(s.locationId),
         sensor_id: s.sensorId,
