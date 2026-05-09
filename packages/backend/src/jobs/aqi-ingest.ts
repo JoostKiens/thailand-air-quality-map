@@ -1,34 +1,17 @@
-import pRetry, { AbortError } from 'p-retry';
 import { supabase } from '../db/client.js';
 import { redis } from '../cache/client.js';
 import { fetchLocations, fetchSensorDailyAverage, PARAMETERS } from '../lib/openaq.js';
+import { type CachedSensor, SENSOR_CACHE_KEY } from './stations-ingest.js';
 
 const BATCH_SIZE = 500;
-const CONCURRENCY = 1; // sequential — OpenAQ free tier is strictly rate limited
-const REQUEST_DELAY_MS = 600; // ~1.5 req/s, well under the free tier limit
-// Fetch measurements for all countries that fall within the viewport bbox [89,1,114,30]
+const DEFAULT_DELAY_MS = 1_100; // ~54 req/min — safely under the 60/min free-tier limit
+// Countries whose stations fall within the viewport bbox [89,1,114,30]
 const TARGET_COUNTRIES = new Set(['TH', 'MM', 'LA', 'KH', 'VN', 'CN', 'BD', 'MY', 'IN']);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function withConcurrency<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let i = 0;
-  async function next(): Promise<void> {
-    const item = items[i++];
-    if (item === undefined) return;
-    await fn(item);
-    await sleep(REQUEST_DELAY_MS);
-    await next();
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
-}
-
 export async function runAqiIngest(date?: string): Promise<{
-  stationsUpserted: number;
+  sensorsQueried: number;
   measurementsInserted: number;
 }> {
   const apiKey = process.env.OPENAQ_API_KEY;
@@ -38,75 +21,47 @@ export async function runAqiIngest(date?: string): Promise<{
   const dateFrom = `${targetDate}T00:00:00Z`;
   const dateTo = `${targetDate}T23:59:59Z`;
 
-  console.log(`[aqi-ingest] Fetching OpenAQ locations for ${targetDate}...`);
-  const locations = await pRetry(
-    async () => {
-      try {
-        return await fetchLocations();
-      } catch (err) {
-        if (err instanceof Error && /\b4\d\d\b/.test(err.message))
-          throw new AbortError(err.message);
-        throw err;
-      }
-    },
-    {
-      retries: 3,
-      minTimeout: 2000,
-      factor: 2,
-      onFailedAttempt: (err) =>
-        console.warn(
-          `[aqi-ingest] locations attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
-        ),
-    },
-  );
-  console.log(`[aqi-ingest] Fetched ${locations.length} locations`);
+  // --- build sensor list (three-tier: Redis → fetchLocations fallback) ---
+  //
+  // 1. Redis: stations-ingest writes the full sensor list here weekly (TTL 8 days).
+  //    This is the authoritative source — covers all sensors, including ones that
+  //    have never reported data yet.
+  // 2. fetchLocations() fallback: Redis cache is cold (first run before stations-ingest
+  //    has ever run). Fetches fresh from the API and populates the Redis cache.
+  let sensorsToFetch: CachedSensor[] = [];
 
-  // --- upsert stations ---
-  const stationRows = locations
-    .filter((loc) => loc.coordinates !== null && loc.name != null)
-    .map((loc) => ({
-      id: String(loc.id),
-      name: loc.name,
-      location: `POINT(${loc.coordinates!.longitude} ${loc.coordinates!.latitude})`,
-      lat: loc.coordinates!.latitude,
-      lng: loc.coordinates!.longitude,
-      country: loc.country?.code ?? null,
-      provider: loc.providers?.[0]?.name ?? null,
-      is_mobile: loc.isMobile,
-      is_monitor: loc.isMonitor ?? null,
-      parameters: loc.sensors
-        .map((s) => s.parameter.name)
-        .filter((p): p is string => (PARAMETERS as readonly string[]).includes(p)),
-      updated_at: new Date().toISOString(),
-    }));
+  const cached = await redis.get<CachedSensor[]>(SENSOR_CACHE_KEY);
 
-  const { error: stationsError } = await supabase
-    .from('stations')
-    .upsert(stationRows, { onConflict: 'id' });
-
-  if (stationsError) {
-    throw new Error(`Stations upsert failed: ${stationsError.message}`);
+  if (cached?.length) {
+    // The cache contains all parameters within the bbox — filter to pm25 only.
+    // Country scoping is implicit: fetchLocations uses DEFAULT_BBOX [89,1,114,30]
+    // which already covers exactly TARGET_COUNTRIES.
+    sensorsToFetch = cached.filter((s) => s.parameter === 'pm25');
+    console.log(`[aqi-ingest] Using ${sensorsToFetch.length} pm25 sensors from Redis cache`);
+  } else {
+    // Cold start: Redis cache is empty — call the API directly to bootstrap
+    console.log('[aqi-ingest] Redis sensor cache empty — falling back to fetchLocations()');
+    const locations = await fetchLocations();
+    sensorsToFetch = locations
+      .filter((loc) => loc.country !== null && TARGET_COUNTRIES.has(loc.country.code))
+      .flatMap((loc) =>
+        loc.sensors
+          .filter((s) => s.parameter.name === 'pm25')
+          .map((s) => ({
+            sensorId: s.id,
+            locationId: String(loc.id),
+            parameter: s.parameter.name,
+            unit: s.parameter.units,
+          })),
+      );
+    console.log(`[aqi-ingest] Fetched ${sensorsToFetch.length} pm25 sensors from API (bootstrap)`);
   }
-  console.log(`[aqi-ingest] Upserted ${stationRows.length} stations`);
 
-  // --- collect pm25 sensors in target countries only ---
-  const sensorsToFetch = locations
-    .filter((loc) => loc.country !== null && TARGET_COUNTRIES.has(loc.country.code))
-    .flatMap((loc) =>
-      loc.sensors
-        .filter((s) => s.parameter.name === 'pm25')
-        .map((s) => ({
-          locationId: loc.id,
-          sensorId: s.id,
-          parameter: s.parameter.name,
-          unit: s.parameter.units,
-        })),
-    );
   console.log(
-    `[aqi-ingest] Fetching measurements for ${sensorsToFetch.length} sensors (${CONCURRENCY} concurrent)...`,
+    `[aqi-ingest] Fetching measurements for ${sensorsToFetch.length} sensors for ${targetDate}...`,
   );
 
-  // --- fetch daily average per sensor ---
+  // --- fetch daily average per sensor with header-driven adaptive delay ---
   const measurementRows: {
     station_id: string;
     sensor_id: number;
@@ -116,31 +71,37 @@ export async function runAqiIngest(date?: string): Promise<{
     measured_at: string;
   }[] = [];
 
-  await withConcurrency(sensorsToFetch, CONCURRENCY, async (s) => {
-    const readings = await pRetry(
-      async () => {
-        try {
-          return await fetchSensorDailyAverage(apiKey, s.sensorId, dateFrom, dateTo);
-        } catch (err) {
-          if (err instanceof Error && /\b4\d\d\b/.test(err.message))
-            throw new AbortError(err.message);
-          throw err;
-        }
-      },
-      {
-        retries: 3,
-        minTimeout: 2000,
-        factor: 2,
-        onFailedAttempt: (err) =>
-          console.warn(
-            `[aqi-ingest] sensor ${s.sensorId} attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
-          ),
-      },
+  let nextDelayMs = DEFAULT_DELAY_MS;
+
+  for (const s of sensorsToFetch) {
+    await sleep(nextDelayMs);
+
+    const { readings, rateLimitRemaining, rateLimitResetMs } = await fetchSensorDailyAverage(
+      apiKey,
+      s.sensorId,
+      dateFrom,
+      dateTo,
     );
+
+    // Adjust next delay based on rate-limit headers
+    if (rateLimitRemaining !== null && rateLimitResetMs !== null) {
+      const timeUntilResetMs = Math.max(0, rateLimitResetMs - Date.now());
+      if (rateLimitRemaining <= 2) {
+        // Window nearly exhausted — wait for reset before next request
+        nextDelayMs = timeUntilResetMs + 1_000;
+        console.warn(
+          `[aqi-ingest] rate limit nearly exhausted, pausing ${Math.round(nextDelayMs / 1000)}s until reset`,
+        );
+      } else {
+        // Spread remaining quota evenly over the remaining window
+        nextDelayMs = Math.max(200, Math.ceil(timeUntilResetMs / rateLimitRemaining));
+      }
+    }
+
     for (const r of readings) {
       if (r.value === null || r.value === undefined) continue;
       measurementRows.push({
-        station_id: String(s.locationId),
+        station_id: s.locationId,
         sensor_id: s.sensorId,
         parameter: s.parameter,
         value: r.value,
@@ -148,7 +109,7 @@ export async function runAqiIngest(date?: string): Promise<{
         measured_at: r.dateUtc,
       });
     }
-  });
+  }
 
   console.log(`[aqi-ingest] Collected ${measurementRows.length} measurements`);
 
@@ -164,8 +125,7 @@ export async function runAqiIngest(date?: string): Promise<{
     }
   }
 
-  // Invalidate Redis cache so next API request re-fetches fresh data from Supabase.
-  // Keys follow the pattern measurements:latest:{param}:{date|current}.
+  // Invalidate Redis cache
   await Promise.all(
     PARAMETERS.flatMap((p) => [
       redis.del(`measurements:latest:${p}:current`),
@@ -173,6 +133,6 @@ export async function runAqiIngest(date?: string): Promise<{
     ]),
   );
 
-  console.log('[aqi-ingest] Done (duplicates silently skipped)');
-  return { stationsUpserted: stationRows.length, measurementsInserted: measurementRows.length };
+  console.log('[aqi-ingest] Done');
+  return { sensorsQueried: sensorsToFetch.length, measurementsInserted: measurementRows.length };
 }

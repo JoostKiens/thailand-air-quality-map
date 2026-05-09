@@ -50,57 +50,74 @@ export interface SensorDailyAverage {
   dateUtc: string; // period.datetimeTo.utc — end of local day, falls within the same UTC calendar date
 }
 
+export interface SensorFetchResult {
+  readings: SensorDailyAverage[];
+  rateLimitRemaining: number | null; // x-ratelimit-remaining
+  rateLimitResetMs: number | null; // x-ratelimit-reset × 1000 (Unix ms)
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function parseRateLimitHeaders(
+  headers: Headers,
+): Pick<SensorFetchResult, 'rateLimitRemaining' | 'rateLimitResetMs'> {
+  const remaining = Number(headers.get('x-ratelimit-remaining'));
+  const reset = Number(headers.get('x-ratelimit-reset'));
+  return {
+    rateLimitRemaining: Number.isFinite(remaining) ? remaining : null,
+    rateLimitResetMs: Number.isFinite(reset) && reset > 0 ? reset * 1000 : null,
+  };
+}
 
 export async function fetchSensorDailyAverage(
   apiKey: string,
   sensorId: number,
   dateFrom: string,
   dateTo: string,
-): Promise<SensorDailyAverage[]> {
+): Promise<SensorFetchResult> {
   const url =
     `${BASE_URL}/sensors/${sensorId}/days` +
     `?datetime_from=${encodeURIComponent(dateFrom)}&datetime_to=${encodeURIComponent(dateTo)}&limit=10`;
 
-  // Retry backoff: 10s, 20s, 40s, 60s — OpenAQ free tier enforces per-minute quotas
-  const RETRY_DELAYS = [10_000, 20_000, 40_000, 60_000];
+  const MAX_RETRIES = 4;
   let attempt = 0;
 
   while (true) {
     const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const rateLimit = parseRateLimitHeaders(res.headers);
 
     if (res.status === 429) {
-      if (attempt >= RETRY_DELAYS.length) {
+      if (attempt >= MAX_RETRIES) {
         console.warn(
           `[openaq] sensor ${sensorId}: rate limited after ${attempt} retries, skipping`,
         );
-        return [];
+        return { readings: [], ...rateLimit };
       }
-      const retryAfterSec = Number(res.headers.get('Retry-After'));
-      const wait =
-        Number.isFinite(retryAfterSec) && retryAfterSec > 0
-          ? retryAfterSec * 1000
-          : RETRY_DELAYS[attempt++];
+      // Use x-ratelimit-reset for the exact window boundary; fall back to exponential backoff
+      const waitMs = rateLimit.rateLimitResetMs
+        ? Math.max(0, rateLimit.rateLimitResetMs - Date.now()) + 1_000
+        : Math.min(60_000, 10_000 * 2 ** attempt);
+      attempt++;
       console.warn(
-        `[openaq] sensor ${sensorId}: 429 rate limited, waiting ${Math.round((wait ?? 0) / 1000)}s (attempt ${attempt})`,
+        `[openaq] sensor ${sensorId}: 429, waiting ${Math.round(waitMs / 1000)}s until reset (attempt ${attempt})`,
       );
-      await sleep(wait ?? 0);
+      await sleep(waitMs);
       continue;
     }
-    if (res.status === 404) return []; // sensor has no data for this period
+
+    if (res.status === 404) return { readings: [], ...rateLimit };
     if (!res.ok)
       throw new Error(`OpenAQ sensor ${sensorId} error: ${res.status} ${res.statusText}`);
 
     const data = (await res.json()) as OpenAQDaysResponse;
+    const readings = data.results
+      .filter((r) => r.period !== null)
+      // Use datetimeTo.utc (end of local day) so the timestamp falls within the same
+      // UTC calendar date as the local day. datetimeFrom.utc would be ~7 h earlier
+      // (local midnight in UTC+7), falling outside the UTC-day window used by the API.
+      .map((r) => ({ value: r.value, dateUtc: r.period!.datetimeTo.utc }));
 
-    return (
-      data.results
-        .filter((r) => r.period !== null)
-        // Use datetimeTo.utc (end of local day) so the timestamp falls within the same
-        // UTC calendar date as the local day. datetimeFrom.utc would be ~7 h earlier
-        // (local midnight in UTC+7), falling outside the UTC-day window used by the API.
-        .map((r) => ({ value: r.value, dateUtc: r.period!.datetimeTo.utc }))
-    );
+    return { readings, ...rateLimit };
   }
 }
 

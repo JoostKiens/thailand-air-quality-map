@@ -125,11 +125,10 @@ async function main() {
 
     // 4. OpenAQ measurements (slowest — inner per-sensor retry already handles 429)
     try {
-      const { stationsUpserted, measurementsInserted } = await callWithRateLimit(
-        `aqi ${date}`,
-        () => runAqiIngest(date),
+      const { sensorsQueried, measurementsInserted } = await callWithRateLimit(`aqi ${date}`, () =>
+        runAqiIngest(date),
       );
-      result.aqi = `${stationsUpserted} stations, ${measurementsInserted} measurements`;
+      result.aqi = `${sensorsQueried} sensors, ${measurementsInserted} measurements`;
     } catch (err) {
       result.aqi = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
       result.ok = false;

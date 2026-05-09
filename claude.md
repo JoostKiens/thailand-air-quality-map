@@ -271,10 +271,16 @@ Do not store wind data in Postgres — it is ephemeral and only needed for curre
 
 OpenAQ v3 uses a hierarchy: **Location → Sensors → Measurements**. Each location
 (station) contains multiple sensors, and each sensor tracks exactly one parameter.
-The ingestion job does two things per run:
+Station metadata and measurement ingestion are split across two separate jobs:
 
-1. Upsert station metadata into `stations` (cheap, data rarely changes)
-2. Insert new rows into `measurements` for each parameter per station
+- `stations-ingest` (weekly): upserts location metadata into `stations`.
+- `aqi-ingest` (hourly): derives the sensor list from `SELECT DISTINCT sensor_id FROM
+  measurements` (no API call needed after bootstrap), then fetches daily averages.
+  On first run (empty `measurements`), falls back to `fetchLocations()` to bootstrap.
+
+The sensor registry is implicit in the `measurements` table — `sensor_id`, `station_id`,
+`parameter`, and `unit` are stored on every row. New sensors appear automatically once
+they report their first measurement (up to one week lag for brand-new stations).
 
 Parameters to ingest: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`, `bc`.
 Skip `temperature` and `humidity` — meteorological context comes from Open-Meteo.
@@ -436,7 +442,9 @@ Each job lives in `packages/backend/src/jobs/`. Define job and worker separately
 
 ```
 firms-ingest       — runs every 3h, fetches VIIRS data, upserts to Supabase, updates Redis
-aqi-ingest         — runs every 1h, fetches OpenAQ data, upserts to Supabase, updates Redis
+stations-ingest    — runs weekly, fetches OpenAQ locations, upserts stations table only
+aqi-ingest         — runs every 1h, reads sensor IDs from measurements table, fetches
+                     daily averages from OpenAQ, upserts to measurements, updates Redis
 wind-ingest        — runs every 6h, fetches Open-Meteo wind grid, writes to Redis (no DB)
 aq-ingest          — runs every 6h, fetches Open-Meteo CAMS PM2.5 grid, writes to Redis (no DB)
 ```
