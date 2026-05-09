@@ -153,7 +153,7 @@ keeps API keys server-side.
 - Grid: 0.4° spacing over bbox [89,1,114,30] → 63 × 73 = **4,599 points** per date; fetched in 16 batches of 300 (sequential, with 429 retry backoff)
 - No API key required
 - Schedule: every 6 hours (and on-demand for historical dates)
-- Storage: Redis only, key `aq:pm25:{YYYY-MM-DD}`, TTL 48h
+- Storage: Supabase `aq_grid` table (date, lat, lng, pm25 — primary key on all three) **and** Redis cache key `aq:pm25:{YYYY-MM-DD}` TTL 48h. Route checks Redis first; on miss reads from Supabase and re-populates Redis. Ingest writes to both. Pruned after 32 days.
 - License: CC BY 4.0 — same attribution as wind (Open-Meteo footer link covers both)
 - Data source: CAMS (Copernicus Atmosphere Monitoring Service) global model, ~11km resolution
 - Render as: `BitmapLayer` — grid painted onto an offscreen canvas (630×730 px, 10 px/cell) with bilinear color interpolation between cells, then passed as a texture; clipped to land via `MaskExtension` + `SolidPolygonLayer` using Natural Earth 50m land polygons clipped to viewport (`src/data/sea-land-mask.json`); land mask regenerated via `scripts/generate-land-mask.py`
@@ -252,7 +252,20 @@ create index if not exists power_plants_location_idx on power_plants using gist(
 create index if not exists power_plants_fuel_type_idx on power_plants (fuel_type);
 ```
 
-Do not store wind data in Postgres — it is ephemeral and only needed for current display.
+-- CAMS PM2.5 gridded model (migration 005_aq_grid.sql)
+-- Pruned after 32 days (same as fire_points and measurements). Redis (aq:pm25:{date}, TTL 48h) is the hot cache; Supabase is the persistent store.
+```sql
+create table if not exists aq_grid (
+  date  date    not null,
+  lat   float8  not null,
+  lng   float8  not null,
+  pm25  float8  not null,
+  primary key (date, lat, lng)
+);
+create index if not exists aq_grid_date_idx on aq_grid (date);
+```
+
+Do not store wind data in Postgres — it is ephemeral and only needed for current display. AQ grid data **is** stored in Postgres (see above) because historical date browsing requires it.
 
 ### OpenAQ v3 data model note
 
@@ -562,7 +575,7 @@ pnpm lint
   Supabase dashboard.
 
 - Supabase free tier has 500MB storage. Monitor usage as historical fire data
-  accumulates. Consider a nightly job to prune `fire_points` older than 30 days.
+  accumulates. A nightly prune job (`src/jobs/prune.ts`) deletes `fire_points`, `measurements`, and `aq_grid` rows older than 32 days.
 
 - FIRMS rate limit is 5,000 transactions per 10-minute window. A single bounding box
   request for 1 day counts as 1 transaction. With a 3h schedule this is well within
