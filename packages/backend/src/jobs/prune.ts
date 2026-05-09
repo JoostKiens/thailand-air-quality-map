@@ -1,9 +1,14 @@
 import { supabase } from '../db/client.js';
 
-// 30 days of scrubber window + 1 for today's ingested data (not yet visible on scrubber)
-// + 1 to cover the UTC+7 offset (BKK midnight = UTC prev-day 17:00, so "30 days ago BKK"
-// can be 30d 7h ago UTC and would be pruned too early with exactly 30 days).
-const RETENTION_DAYS = 32;
+// Retention policy (all dates in BKK / ICT, UTC+7):
+//
+//   31 days — scrubber shows T-1 (yesterday) through T-30 (30 days back),
+//             plus T+0 (today) which is ingested by cron but not yet visible
+//   +7 days — Explain fetches a 7-day measurement history anchored to the
+//             selected date; on scrubber day 0 (T-30) that reaches back to T-37
+//   +2 days — buffer for UTC+7 timezone boundary and prune job timing
+//   = 40 days
+const RETENTION_DAYS = 40;
 
 export async function runPrune(): Promise<{
   firePointsDeleted: number;

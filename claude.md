@@ -153,7 +153,7 @@ keeps API keys server-side.
 - Grid: 0.4° spacing over bbox [89,1,114,30] → 63 × 73 = **4,599 points** per date; fetched in 16 batches of 300 (sequential, with 429 retry backoff)
 - No API key required
 - Schedule: every 6 hours (and on-demand for historical dates)
-- Storage: Supabase `aq_grid` table (date, lat, lng, pm25 — primary key on all three) **and** Redis cache key `aq:pm25:{YYYY-MM-DD}` TTL 48h. Route checks Redis first; on miss reads from Supabase and re-populates Redis. Ingest writes to both. Pruned after 32 days.
+- Storage: Supabase `aq_grid` table (date, lat, lng, pm25 — primary key on all three) **and** Redis cache key `aq:pm25:{YYYY-MM-DD}` TTL 48h. Route checks Redis first; on miss reads from Supabase and re-populates Redis. Ingest writes to both. Pruned after 40 days.
 - License: CC BY 4.0 — same attribution as wind (Open-Meteo footer link covers both)
 - Data source: CAMS (Copernicus Atmosphere Monitoring Service) global model, ~11km resolution
 - Render as: `BitmapLayer` — grid painted onto an offscreen canvas (630×730 px, 10 px/cell) with bilinear color interpolation between cells, then passed as a texture; clipped to land via `MaskExtension` + `SolidPolygonLayer` using Natural Earth 50m land polygons clipped to viewport (`src/data/sea-land-mask.json`); land mask regenerated via `scripts/generate-land-mask.py`
@@ -253,7 +253,7 @@ create index if not exists power_plants_fuel_type_idx on power_plants (fuel_type
 ```
 
 -- CAMS PM2.5 gridded model (migration 005_aq_grid.sql)
--- Pruned after 32 days (same as fire_points and measurements). Redis (aq:pm25:{date}, TTL 48h) is the hot cache; Supabase is the persistent store.
+-- Pruned after 40 days (same as fire_points and measurements). Redis (aq:pm25:{date}, TTL 48h) is the hot cache; Supabase is the persistent store.
 ```sql
 create table if not exists aq_grid (
   date  date    not null,
@@ -575,7 +575,11 @@ pnpm lint
   Supabase dashboard.
 
 - Supabase free tier has 500MB storage. Monitor usage as historical fire data
-  accumulates. A nightly prune job (`src/jobs/prune.ts`) deletes `fire_points`, `measurements`, and `aq_grid` rows older than 32 days.
+  accumulates. A nightly prune job (`src/jobs/prune.ts`) deletes `fire_points`,
+  `measurements`, and `aq_grid` rows older than **40 days**. Derivation: 31 days
+  (30 scrubber days T-1→T-30, plus today T which is ingested but not yet visible)
+  + 7 days (Explain fetches a 7-day measurement history, so scrubber day 0 reaches
+  back to T-37) + 2 days buffer (UTC+7 timezone boundary + prune timing) = 40.
 
 - FIRMS rate limit is 5,000 transactions per 10-minute window. A single bounding box
   request for 1 day counts as 1 transaction. With a 3h schedule this is well within
