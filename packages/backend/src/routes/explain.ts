@@ -61,6 +61,25 @@ function compassFromDeg(deg: number): string {
   return dirs[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
 }
 
+// Wind direction helpers — directionDeg is always the FROM direction (meteorological).
+// Never apply +180 at call sites; use these functions instead.
+interface WindDir {
+  fromLabel: string; // compass label for display ("from NNE")
+  toLabel: string; // compass label for travel direction ("toward SSW")
+  fromQuadrant: 'N' | 'E' | 'S' | 'W'; // upwind quadrant — fires here affect the station
+  toQuadrant: 'N' | 'E' | 'S' | 'W'; // downwind quadrant — smoke travels here
+}
+
+function parseWindDir(directionDeg: number): WindDir {
+  const toDeg = (directionDeg + 180) % 360;
+  return {
+    fromLabel: compassFromDeg(directionDeg),
+    toLabel: compassFromDeg(toDeg),
+    fromQuadrant: quadrant(directionDeg),
+    toQuadrant: quadrant(toDeg),
+  };
+}
+
 function nearestWind(vectors: WindVector[], lat: number, lng: number): WindVector | null {
   if (!vectors.length) return null;
   let best = vectors[0];
@@ -286,9 +305,11 @@ export function explainRoutes(app: FastifyInstance): void {
         .map((d) => `  ${d.date}: ${d.avg.toFixed(1)} µg/m³ (${pm25Cat(d.avg)})`)
         .join('\n');
 
-      const windStr = wind
-        ? `From ${compassFromDeg(wind.directionDeg)} at ${wind.speedKmh.toFixed(1)} km/h (blowing toward ${compassFromDeg((wind.directionDeg + 180) % 360)})`
-        : 'No wind data available';
+      const windDir = wind ? parseWindDir(wind.directionDeg) : null;
+      const windStr =
+        windDir && wind
+          ? `From ${windDir.fromLabel} at ${wind.speedKmh.toFixed(1)} km/h (blowing toward ${windDir.toLabel})`
+          : 'No wind data available';
 
       const fireStr =
         fires.length === 0
@@ -320,7 +341,7 @@ export function explainRoutes(app: FastifyInstance): void {
         ? `ANOMALY: This station reads ${outlierRatio.toFixed(1)}× the peer median (${peerMedian.toFixed(1)} µg/m³). This is an outlier — consider sensor issues, a sheltered location, microclimate, or a very local source.`
         : '';
 
-      const upwindQuadrant = wind ? quadrant((wind.directionDeg + 180) % 360) : null;
+      const upwindQuadrant = windDir?.fromQuadrant ?? null;
       const upwindFireCount = upwindQuadrant ? quadrantCounts[upwindQuadrant] : 0;
 
       const prompt = `You are explaining current air quality data to a general audience in plain English.

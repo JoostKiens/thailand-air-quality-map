@@ -250,7 +250,7 @@ function SecondarySection({
         <div className="flex justify-between items-center text-xs py-1">
           <span className="text-gray-500">Wind</span>
           <span className="text-gray-800 font-medium">
-            {degToCompass((windVec.directionDeg + 180) % 360)} · {windVec.speedKmh.toFixed(1)} km/h
+            from {degToCompass(windVec.directionDeg)} · {windVec.speedKmh.toFixed(1)} km/h
           </span>
         </div>
       )}

@@ -591,9 +591,35 @@ pnpm lint
 
 - Mapbox GL JS requires the attribution control to remain visible. Do not hide it.
 
-- Wind direction convention: Open-Meteo returns `winddirection_10m` as the direction
-  the wind is coming FROM (meteorological convention). To draw an arrow showing where
-  wind is going, add 180 degrees before computing dx/dy.
+- **Wind direction convention — read this before touching any wind direction code:**
+
+  `WindVector.directionDeg` (and Open-Meteo's `winddirection_10m`) is always the
+  direction the wind is coming **FROM**, in meteorological convention (0° = from North,
+  90° = from East, 180° = from South, 270° = from West).
+
+  | Use case | Result | Example (directionDeg = 45, i.e. wind from NE) |
+  |---|---|---|
+  | **Display label** (InfoPanel, any UI text) | `windDir.fromLabel` | "from NE" |
+  | **Particle / arrow travel direction** | `windDir.toLabel` | "toward SW" |
+  | **Upwind quadrant** (which fires affect the station) | `windDir.fromQuadrant` | `'N'` |
+  | **Downwind quadrant** (where smoke goes) | `windDir.toQuadrant` | `'S'` |
+
+  **Never apply `+ 180` to a display label.** A label reading "NE" means "wind from
+  the NE" — this is how every weather app and meteorologist expresses it. Applying
+  `+ 180` to a label produces the TO direction (SW), which looks correct visually
+  next to particles flowing SW but is non-standard and confusing.
+
+  **Fires that affect a station are in the FROM quadrant** (upwind). A fire to the
+  NE with wind from the NE will have its smoke carried toward the station. A fire to
+  the SW (downwind) will have its smoke blown away from the station.
+
+  **In `explain.ts`** use `parseWindDir(wind.directionDeg)` which returns
+  `{ fromLabel, toLabel, fromQuadrant, toQuadrant }`. Never call `compassFromDeg`
+  or `quadrant` with a manually computed `+ 180` at the call site — put it inside
+  `parseWindDir` if a new use case arises.
+
+  **In the frontend** (`InfoPanel.tsx`) use `degToCompass(windVec.directionDeg)`
+  (no `+ 180`) and prefix the label with "from" in the UI string.
 
 - The PM2.5 grid uses `BitmapLayer` (not `HeatmapLayer`) because `HeatmapLayer` normalizes
   weights relative to the viewport — the min value always maps to the first color regardless
