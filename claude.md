@@ -50,8 +50,7 @@ simplicity and correctness over premature optimization.
 │           │   ├── FiresLayer.ts
 │           │   ├── PM25Layer.tsx
 │           │   ├── WindLayer.ts
-│           │   ├── PowerPlantsLayer.ts
-│           │   └── TrafficLayer.tsx
+│           │   └── PowerPlantsLayer.ts
 │           ├── hooks/        # TanStack Query hooks, one per data type
 │           │   ├── useFires.ts
 │           │   ├── useAQI.ts
@@ -123,7 +122,9 @@ keeps API keys server-side.
 ### OpenAQ — PM2.5 / AQI station readings
 
 - Source: OpenAQ v3 API `https://api.openaq.org/v3/`
-- Endpoints: `/locations` (station list) + `/measurements` (time series)
+- Endpoints: `/v3/locations` (weekly station sync — populates `pm25_sensor_ids` and `datetime_last`) +
+             `/v3/sensors/{id}/hours/daily` (daily averages per sensor; `/days` is confirmed broken
+             — ignores date filters; `/hours/daily` requires local timezone offset in datetime params)
 - Parameters: `pm25` only (primary pollutant for this project)
 - Schedule: once daily (`0 4 * * *` UTC = 11:00 BKK) — fetches daily averages, so
   running more often than once per day adds no value
@@ -171,12 +172,6 @@ keeps API keys server-side.
 - Render as: `BitmapLayer` — grid painted onto an offscreen canvas (630×730 px, 10 px/cell) with bilinear color interpolation between cells, then passed as a texture; clipped to land via `MaskExtension` + `SolidPolygonLayer` using Natural Earth 50m land polygons clipped to viewport (`src/data/sea-land-mask.json`); land mask regenerated via `scripts/generate-land-mask.py`
 - Script: `pnpm --filter backend run ingest:aq YYYY-MM-DD`
 
-### Mapbox Traffic
-
-- Built into Mapbox GL JS, enabled as a native layer
-- No separate API calls needed
-- Toggle on/off via Mapbox layer visibility, not a Deck.gl layer
-
 ### Burn scars (future layer)
 
 - Source: Sentinel-2 via Copernicus Browser or Google Earth Engine
@@ -216,16 +211,18 @@ create index on fire_points (confidence);
 
 -- Monitoring station metadata (upserted on ingestion, rarely changes)
 create table stations (
-  id           text primary key,   -- OpenAQ locations_id as text
-  name         text not null,
-  location     geography(Point, 4326),
-  country      text,               -- 'TH', 'MM', 'LA', 'KH'
-  provider     text,               -- e.g. 'PCD Thailand'
-  is_mobile    boolean default false,
-  is_monitor   boolean,            -- true = reference grade, false = low-cost sensor
-  parameters   text[],             -- array of parameters this station measures
-  created_at   timestamptz default now(),
-  updated_at   timestamptz default now()
+  id               text primary key,   -- OpenAQ locations_id as text
+  name             text not null,
+  location         geography(Point, 4326),
+  country          text,               -- 'TH', 'MM', 'LA', 'KH'
+  provider         text,               -- e.g. 'PCD Thailand'
+  is_mobile        boolean default false,
+  is_monitor       boolean,            -- true = reference grade, false = low-cost sensor
+  parameters       text[],             -- array of parameters this station measures
+  pm25_sensor_ids  int4[]      default '{}',  -- OpenAQ sensor IDs for pm25; populated by stations-ingest; array because a location may have multiple pm25 sensors
+  datetime_last    timestamptz,               -- when this station last reported data; used to skip stale stations (> 30 days)
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now()
 );
 create index on stations using gist(location);
 create index on stations (country);
@@ -305,14 +302,16 @@ OpenAQ v3 uses a hierarchy: **Location → Sensors → Measurements**. Each loca
 (station) contains multiple sensors, and each sensor tracks exactly one parameter.
 Station metadata and measurement ingestion are split across two separate jobs:
 
-- `stations-ingest` (weekly): upserts location metadata into `stations`.
-- `aqi-ingest` (daily, `0 4 * * *` UTC): derives the sensor list from `SELECT DISTINCT sensor_id FROM
-  measurements` (no API call needed after bootstrap), then fetches daily averages.
-  On first run (empty `measurements`), falls back to `fetchLocations()` to bootstrap.
-
-The sensor registry is implicit in the `measurements` table — `sensor_id`, `station_id`,
-`parameter`, and `unit` are stored on every row. New sensors appear automatically once
-they report their first measurement (up to one week lag for brand-new stations).
+- `stations-ingest` (weekly): upserts location metadata into `stations`, including `pm25_sensor_ids`
+  (array of OpenAQ sensor IDs) and `datetime_last`. Skips locations where `datetimeLast > 30 days`.
+- `aqi-ingest` (daily, `0 4 * * *` UTC): reads `pm25_sensor_ids` directly from
+  `SELECT id, pm25_sensor_ids FROM stations WHERE pm25_sensor_ids != '{}'`. No API call
+  to `/locations` is made during daily ingest. A location may have multiple pm25 sensors
+  (e.g. collocated reference and low-cost instruments) — each is fetched and stored as a
+  separate `measurements` row. Only `pm25_sensor_ids[0]` is fetched per station — collocated
+  sensors measure the same air and the map displays one value per location. All sensor IDs
+  are retained in the array for future use. On fresh deployment, run `stations-ingest` before
+  the first `aqi-ingest` run.
 
 Parameters to ingest: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`, `bc`.
 Skip `temperature` and `humidity` — meteorological context comes from Open-Meteo.
@@ -448,7 +447,6 @@ interface LayerStore {
     pm25: { visible: boolean; opacity: number };
     fires: { visible: boolean; opacity: number };
     wind: { visible: boolean; opacity: number };
-    traffic: { visible: boolean; opacity: number };
     burnScars: { visible: boolean; opacity: number };
     powerPlants: { visible: boolean; opacity: number }; // default off
   };
@@ -476,8 +474,11 @@ Railway cron (no job queue). Schedules are configured in Railway's cron service 
 
 ```
 firms-ingest       — every 3h  (0 */3 * * *)   fetches VIIRS data, upserts to Supabase, updates Redis
-stations-ingest    — weekly    (0 0 * * 0)      fetches OpenAQ locations, upserts stations table only
-aqi-ingest         — daily     (0 4 * * *)      reads sensor IDs from measurements, fetches daily averages,
+stations-ingest    — weekly    (0 0 * * 0)      fetches OpenAQ locations by bbox, upserts stations table
+                                                including pm25_sensor_ids and datetime_last;
+                                                skips locations where datetimeLast > 30 days
+aqi-ingest         — daily     (0 4 * * *)      reads pm25_sensor_ids from stations table (no fetchLocations call),
+                                                fetches daily averages via /hours/daily per sensor ID,
                                                 upserts to measurements, updates Redis
 weather-ingest     — daily     (0 4 * * *)      fetches Open-Meteo weather grid (wind, precipitation,
                                                 humidity, temperature), upserts to Supabase
@@ -500,7 +501,6 @@ implemented within the script (3 attempts with exponential backoff where applica
 | Fire points   | 3× `ScatterplotLayer` (additive blend) | Outer glow / mid halo / inner core rings; pixel radius scales with zoom (1–3 px base); intensity from `brightTi4`; low-confidence at 50% opacity |
 | Wind particles | Animated `PathLayer` (non-interleaved overlay) | 1500 particles, bilinear interpolation, TRAIL_LENGTH=10, rAF loop |
 | Power plants  | `IconLayer`                      | Canvas atlas (96×32 diamond icons), Coal/Gas/Oil fuel types, 24px fixed size, hover tooltip |
-| Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
 Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
 not return `country_id`, so per-country coloring is not available.

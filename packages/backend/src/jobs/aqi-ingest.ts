@@ -1,7 +1,6 @@
 import { supabase } from '../db/client.js';
 import { redis } from '../cache/client.js';
-import { fetchLocations, fetchSensorDailyAverage, PARAMETERS } from '../lib/openaq.js';
-import { type CachedSensor, SENSOR_CACHE_KEY, SENSOR_CACHE_TTL } from './stations-ingest.js';
+import { fetchSensorDailyAverage, PARAMETERS } from '../lib/openaq.js';
 
 const BATCH_SIZE = 500;
 const DEFAULT_DELAY_MS = 1_100; // ~54 req/min — safely under the 60/min free-tier limit
@@ -9,8 +8,6 @@ const DEFAULT_DELAY_MS = 1_100; // ~54 req/min — safely under the 60/min free-
 // Repeated 429s after waiting for reset means the hourly quota is exhausted.
 // Continuing would risk a temporary or permanent ban from OpenAQ.
 const CONSECUTIVE_429_ABORT = 5;
-// Countries whose stations fall within the viewport bbox [89,1,114,30]
-const TARGET_COUNTRIES = new Set(['TH', 'MM', 'LA', 'KH', 'VN', 'CN', 'BD', 'MY', 'IN']);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -22,62 +19,21 @@ export async function runAqiIngest(date?: string): Promise<{
   if (!apiKey) throw new Error('OPENAQ_API_KEY env var is required');
 
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
-  const dateFrom = `${targetDate}T00:00:00Z`;
-  const dateTo = `${targetDate}T23:59:59Z`;
 
-  // --- build sensor list (three-tier: Redis → fetchLocations fallback) ---
-  //
-  // 1. Redis: stations-ingest writes the full sensor list here weekly (TTL 8 days).
-  //    This is the authoritative source — covers all sensors, including ones that
-  //    have never reported data yet.
-  // 2. fetchLocations() fallback: Redis cache is cold (first run before stations-ingest
-  //    has ever run). Fetches fresh from the API and populates the Redis cache.
-  let sensorsToFetch: CachedSensor[] = [];
+  const { data: stationRows, error: stationsError } = await supabase
+    .from('stations')
+    .select('id, pm25_sensor_ids')
+    .filter('pm25_sensor_ids', 'not.eq', '{}');
 
-  const cached = await redis.get<CachedSensor[]>(SENSOR_CACHE_KEY);
+  if (stationsError) throw new Error(`Failed to fetch stations: ${stationsError.message}`);
 
-  if (cached?.length) {
-    // The cache contains all parameters within the bbox — filter to pm25 only.
-    // Country scoping is implicit: fetchLocations uses DEFAULT_BBOX [89,1,114,30]
-    // which already covers exactly TARGET_COUNTRIES.
-    sensorsToFetch = cached.filter((s) => s.parameter === 'pm25');
-    console.log(`[aqi-ingest] Using ${sensorsToFetch.length} pm25 sensors from Redis cache`);
-  } else {
-    // Cold start: Redis cache is empty — call the API directly to bootstrap
-    console.log('[aqi-ingest] Redis sensor cache empty — falling back to fetchLocations()');
-    const locations = await fetchLocations();
-
-    // Cache the full sensor list (all parameters) so subsequent runs skip this fetch
-    const allSensors: CachedSensor[] = locations.flatMap((loc) =>
-      loc.sensors
-        .filter((s) => (PARAMETERS as readonly string[]).includes(s.parameter.name))
-        .map((s) => ({
-          sensorId: s.id,
-          locationId: String(loc.id),
-          parameter: s.parameter.name,
-          unit: s.parameter.units,
-        })),
-    );
-    await redis.set(SENSOR_CACHE_KEY, allSensors, { ex: SENSOR_CACHE_TTL });
-    console.log(`[aqi-ingest] Cached ${allSensors.length} sensors in Redis (TTL 8 days)`);
-
-    sensorsToFetch = locations
-      .filter((loc) => loc.country !== null && TARGET_COUNTRIES.has(loc.country.code))
-      .flatMap((loc) =>
-        loc.sensors
-          .filter((s) => s.parameter.name === 'pm25')
-          .map((s) => ({
-            sensorId: s.id,
-            locationId: String(loc.id),
-            parameter: s.parameter.name,
-            unit: s.parameter.units,
-          })),
-      );
-    console.log(`[aqi-ingest] Fetched ${sensorsToFetch.length} pm25 sensors from API (bootstrap)`);
+  if (!stationRows?.length) {
+    console.warn('[aqi-ingest] no stations with pm25_sensor_ids found — run stations-ingest first');
+    return { sensorsQueried: 0, measurementsInserted: 0 };
   }
 
   console.log(
-    `[aqi-ingest] Fetching measurements for ${sensorsToFetch.length} sensors for ${targetDate}...`,
+    `[aqi-ingest] Fetching measurements for ${targetDate} across ${stationRows.length} sensors...`,
   );
 
   // --- fetch daily average per sensor with header-driven adaptive delay ---
@@ -90,20 +46,25 @@ export async function runAqiIngest(date?: string): Promise<{
     measured_at: string;
   }[] = [];
 
+  let sensorsQueried = 0;
   let nextDelayMs = DEFAULT_DELAY_MS;
   let consecutive429s = 0;
 
-  for (const s of sensorsToFetch) {
+  for (const station of stationRows) {
+    // Only fetch the first sensor per station — collocated sensors measure the same air
+    // and we display one value per location on the map.
+    const sensorId = (station.pm25_sensor_ids as number[])[0];
+
     // Consume the computed delay, then immediately reset to the safe default.
     // Header-based logic below will override it for the next iteration.
     await sleep(nextDelayMs);
     nextDelayMs = DEFAULT_DELAY_MS;
+    sensorsQueried++;
 
     const { readings, rateLimitRemaining, rateLimitResetMs } = await fetchSensorDailyAverage(
       apiKey,
-      s.sensorId,
-      dateFrom,
-      dateTo,
+      sensorId,
+      targetDate,
     );
 
     // Adjust next delay based on rate-limit headers
@@ -138,11 +99,11 @@ export async function runAqiIngest(date?: string): Promise<{
     for (const r of readings) {
       if (r.value === null || r.value === undefined) continue;
       measurementRows.push({
-        station_id: s.locationId,
-        sensor_id: s.sensorId,
-        parameter: s.parameter,
+        station_id: station.id as string,
+        sensor_id: sensorId,
+        parameter: 'pm25',
         value: r.value,
-        unit: s.unit,
+        unit: 'µg/m³',
         measured_at: r.dateUtc,
       });
     }
@@ -171,5 +132,5 @@ export async function runAqiIngest(date?: string): Promise<{
   );
 
   console.log('[aqi-ingest] Done');
-  return { sensorsQueried: sensorsToFetch.length, measurementsInserted: measurementRows.length };
+  return { sensorsQueried, measurementsInserted: measurementRows.length };
 }

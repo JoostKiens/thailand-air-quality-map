@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useExplain } from '../hooks/useExplain';
 import { useTimeStore } from '../store/timeStore';
+import { sanitizeExplanation, parseBoldSegments } from '../utils/sanitize';
 
 interface Props {
   stationId: string;
@@ -58,7 +59,9 @@ export function ExplainButton({
 
       {text && (
         <div className="mt-2 text-[11px] text-gray-600 leading-relaxed whitespace-pre-line">
-          {text}
+          {parseBoldSegments(sanitizeExplanation(text)).map((seg, i) =>
+            seg.bold ? <strong key={i}>{seg.text}</strong> : <span key={i}>{seg.text}</span>,
+          )}
         </div>
       )}
 

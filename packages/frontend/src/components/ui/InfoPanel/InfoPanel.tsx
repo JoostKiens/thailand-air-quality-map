@@ -9,6 +9,7 @@ import { pm25ToRgb, pm25ToCategory } from '../../../lib/aqiColors';
 import { reverseGeocode } from '../../../lib/geocode';
 import { findNearestAQPoint, findNearestWind, degToCompass } from '../../../lib/ambient';
 import { useAQGrid } from '../../../hooks/useAQGrid';
+import { useAQI } from '../../../hooks/useAQI';
 import { useWind } from '../../../hooks/useWind';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -27,6 +28,7 @@ export function InfoPanel() {
   const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
   const selectedDate = useTimeStore((s) => s.selectedDate);
   const { data: aqGrid } = useAQGrid();
+  const { data: aqData, isLoading: aqLoading } = useAQI();
   const { data: wind } = useWind();
 
   const [placeName, setPlaceName] = useState<string | null>(null);
@@ -47,8 +49,23 @@ export function InfoPanel() {
       .finally(() => setGeocodeLoading(false));
   }, [coordKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch 7-day history when a station or the selected date changes
+  // Sync station tooltip when the date changes: update pm25/measuredAt from fresh AQI data,
+  // or close the panel if the station has no data for the new date.
   const stationId = selectedPoint?.station?.stationId ?? null;
+  useEffect(() => {
+    if (!stationId || aqLoading || !aqData) return;
+    if (!aqData.find((m) => m.stationId === stationId)) setSelectedPoint(null);
+  }, [selectedDate, aqLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live measurement for the selected station — updates whenever AQI data refreshes.
+  // Falls back to the value baked in at click time while the new date is still loading.
+  const liveAqi = stationId ? (aqData?.find((m) => m.stationId === stationId) ?? null) : null;
+  const displayStation =
+    selectedPoint?.station && liveAqi
+      ? { ...selectedPoint.station, pm25: liveAqi.value, measuredAt: liveAqi.measuredAt }
+      : (selectedPoint?.station ?? null);
+
+  // Fetch 7-day history when a station or the selected date changes
   useEffect(() => {
     if (!stationId) {
       setHistory({ status: 'idle', data: null });
@@ -126,15 +143,16 @@ export function InfoPanel() {
               lngLat={selectedPoint.lngLat}
               placeName={placeName}
               geocodeLoading={geocodeLoading}
+              stationName={displayStation?.stationName ?? null}
               plantName={selectedPoint.powerPlant?.name ?? null}
               onClose={() => setSelectedPoint(null)}
             />
 
             {panelType !== 'cluster' && <hr className="border-gray-100 my-2" />}
 
-            {selectedPoint.station && (
+            {displayStation && (
               <StationPanel
-                station={selectedPoint.station}
+                station={displayStation}
                 lngLat={selectedPoint.lngLat}
                 aqPoint={aqPoint}
                 windVec={windVec}
@@ -171,6 +189,7 @@ function PanelHeader({
   lngLat,
   placeName,
   geocodeLoading,
+  stationName,
   plantName,
   onClose,
 }: {
@@ -178,6 +197,7 @@ function PanelHeader({
   lngLat: [number, number];
   placeName: string | null;
   geocodeLoading: boolean;
+  stationName: string | null;
   plantName: string | null;
   onClose: () => void;
 }) {
@@ -198,6 +218,9 @@ function PanelHeader({
         <p className="text-[10px] font-medium uppercase tracking-widest text-gray-400 leading-tight mb-0.5">
           {badgeLabel}
         </p>
+        {panelType === 'station' && stationName && (
+          <p className="text-xs font-medium text-gray-700">{stationName}</p>
+        )}
         {panelType === 'powerPlant' && plantName && (
           <p className="text-xs font-medium text-gray-700 truncate">{plantName}</p>
         )}
@@ -205,7 +228,7 @@ function PanelHeader({
           <Shimmer className="h-3 w-24 mb-0.5 mt-0.5" />
         ) : placeName ? (
           <p
-            className={`truncate ${panelType === 'powerPlant' ? 'text-[11px] text-gray-400' : 'text-xs font-medium text-gray-700'}`}
+            className={`truncate ${panelType === 'station' || panelType === 'powerPlant' ? 'text-[11px] text-gray-400' : 'text-xs font-medium text-gray-700'}`}
           >
             {placeName}
           </p>
