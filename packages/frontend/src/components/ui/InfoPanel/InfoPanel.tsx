@@ -143,6 +143,7 @@ export function InfoPanel() {
               lngLat={selectedPoint.lngLat}
               placeName={placeName}
               geocodeLoading={geocodeLoading}
+              stationName={displayStation?.stationName ?? null}
               plantName={selectedPoint.powerPlant?.name ?? null}
               onClose={() => setSelectedPoint(null)}
             />
@@ -188,6 +189,7 @@ function PanelHeader({
   lngLat,
   placeName,
   geocodeLoading,
+  stationName,
   plantName,
   onClose,
 }: {
@@ -195,6 +197,7 @@ function PanelHeader({
   lngLat: [number, number];
   placeName: string | null;
   geocodeLoading: boolean;
+  stationName: string | null;
   plantName: string | null;
   onClose: () => void;
 }) {
@@ -215,6 +218,9 @@ function PanelHeader({
         <p className="text-[10px] font-medium uppercase tracking-widest text-gray-400 leading-tight mb-0.5">
           {badgeLabel}
         </p>
+        {panelType === 'station' && stationName && (
+          <p className="text-xs font-medium text-gray-700">{stationName}</p>
+        )}
         {panelType === 'powerPlant' && plantName && (
           <p className="text-xs font-medium text-gray-700 truncate">{plantName}</p>
         )}
@@ -222,7 +228,7 @@ function PanelHeader({
           <Shimmer className="h-3 w-24 mb-0.5 mt-0.5" />
         ) : placeName ? (
           <p
-            className={`truncate ${panelType === 'powerPlant' ? 'text-[11px] text-gray-400' : 'text-xs font-medium text-gray-700'}`}
+            className={`truncate ${panelType === 'station' || panelType === 'powerPlant' ? 'text-[11px] text-gray-400' : 'text-xs font-medium text-gray-700'}`}
           >
             {placeName}
           </p>
