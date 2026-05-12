@@ -50,8 +50,7 @@ simplicity and correctness over premature optimization.
 │           │   ├── FiresLayer.ts
 │           │   ├── PM25Layer.tsx
 │           │   ├── WindLayer.ts
-│           │   ├── PowerPlantsLayer.ts
-│           │   └── TrafficLayer.tsx
+│           │   └── PowerPlantsLayer.ts
 │           ├── hooks/        # TanStack Query hooks, one per data type
 │           │   ├── useFires.ts
 │           │   ├── useAQI.ts
@@ -159,12 +158,6 @@ keeps API keys server-side.
 - Data source: CAMS (Copernicus Atmosphere Monitoring Service) global model, ~11km resolution
 - Render as: `BitmapLayer` — grid painted onto an offscreen canvas (630×730 px, 10 px/cell) with bilinear color interpolation between cells, then passed as a texture; clipped to land via `MaskExtension` + `SolidPolygonLayer` using Natural Earth 50m land polygons clipped to viewport (`src/data/sea-land-mask.json`); land mask regenerated via `scripts/generate-land-mask.py`
 - Script: `pnpm --filter backend run ingest:aq YYYY-MM-DD`
-
-### Mapbox Traffic
-
-- Built into Mapbox GL JS, enabled as a native layer
-- No separate API calls needed
-- Toggle on/off via Mapbox layer visibility, not a Deck.gl layer
 
 ### Burn scars (future layer)
 
@@ -420,7 +413,6 @@ interface LayerStore {
     pm25: { visible: boolean; opacity: number };
     fires: { visible: boolean; opacity: number };
     wind: { visible: boolean; opacity: number };
-    traffic: { visible: boolean; opacity: number };
     burnScars: { visible: boolean; opacity: number };
     powerPlants: { visible: boolean; opacity: number }; // default off
   };
@@ -473,7 +465,6 @@ implemented within the script (3 attempts with exponential backoff where applica
 | Fire points   | 3× `ScatterplotLayer` (additive blend) | Outer glow / mid halo / inner core rings; pixel radius scales with zoom (1–3 px base); intensity from `brightTi4`; low-confidence at 50% opacity |
 | Wind particles | Animated `PathLayer` (non-interleaved overlay) | 1500 particles, bilinear interpolation, TRAIL_LENGTH=10, rAF loop |
 | Power plants  | `IconLayer`                      | Canvas atlas (96×32 diamond icons), Coal/Gas/Oil fuel types, 24px fixed size, hover tooltip |
-| Traffic       | Native Mapbox layer              | toggle via `map.setLayoutProperty()`                  |
 
 Fire point color: `#f97316` (orange) — uniform for all detections. The FIRMS area API does
 not return `country_id`, so per-country coloring is not available.
