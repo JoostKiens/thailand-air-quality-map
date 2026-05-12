@@ -236,6 +236,20 @@ export function explainRoutes(app: FastifyInstance): void {
           avg: vals.reduce((s, v) => s + v, 0) / vals.length,
         }));
 
+      // --- wind context (needed before fires to compute effective radius) ---
+      const wind = windCache ? nearestWind(windCache, lat, lng) : null;
+
+      // Effective smoke travel radius based on current wind speed as a proxy for the
+      // past 48 h. At calm winds (< 5 km/h) transport is diffusion-dominated so we
+      // cap at 50 km. Otherwise: speed × 36 h lookback, capped at FIRE_RADIUS_KM.
+      // We use this to actually filter the fires shown to the model — not just as a hint —
+      // so the model cannot reason about fires it shouldn't know about.
+      const effectiveRadiusKm = wind
+        ? wind.speedKmh < 5
+          ? 50
+          : Math.min(Math.round(wind.speedKmh * 36), FIRE_RADIUS_KM)
+        : FIRE_RADIUS_KM;
+
       // --- fires context ---
       req.log.info(
         {
@@ -260,7 +274,7 @@ export function explainRoutes(app: FastifyInstance): void {
           distKm: haversineKm(lat, lng, f.lat, f.lng),
           bearing: bearingDeg(lat, lng, f.lat, f.lng),
         }))
-        .filter((f) => f.distKm <= FIRE_RADIUS_KM);
+        .filter((f) => f.distKm <= effectiveRadiusKm);
 
       const quadrantCounts = { N: 0, E: 0, S: 0, W: 0 };
       const quadrantFrp = { N: 0, E: 0, S: 0, W: 0 };
@@ -295,10 +309,12 @@ export function explainRoutes(app: FastifyInstance): void {
       const peerMin = peerValues.length ? Math.min(...peerValues) : null;
       const peerMax = peerValues.length ? Math.max(...peerValues) : null;
       const outlierRatio = peerMedian > 0 ? latestPm25 / peerMedian : null;
-      const isOutlier = outlierRatio !== null && (outlierRatio < 0.3 || outlierRatio > 3);
 
-      // --- wind context ---
-      const wind = windCache ? nearestWind(windCache, lat, lng) : null;
+      // Outlier thresholds:
+      //   strong — reading is ≥2× or ≤0.4× peer median → likely sensor issue or hyperlocal anomaly
+      //   elevated — reading is ≥1.4× peer median → noticeably above neighbours, worth flagging
+      const isStrongOutlier = outlierRatio !== null && (outlierRatio >= 2.0 || outlierRatio <= 0.4);
+      const isElevatedOutlier = outlierRatio !== null && outlierRatio >= 1.4 && !isStrongOutlier;
 
       // --- build prompt ---
       const dailyLines = dailyAvgs
@@ -313,7 +329,7 @@ export function explainRoutes(app: FastifyInstance): void {
 
       const fireStr =
         fires.length === 0
-          ? `No fires detected within ${FIRE_RADIUS_KM} km in the last 48 hours`
+          ? `No fires detected within ${effectiveRadiusKm} km in the last 48 hours`
           : [
               `${fires.length} fire detections (${vegFires} vegetation, ${fires.length - vegFires} other)`,
               `Total FRP: ${fires.reduce((s, f) => s + (f.frp ?? 0), 0).toFixed(0)} MW`,
@@ -337,9 +353,12 @@ export function explainRoutes(app: FastifyInstance): void {
                 .join('\n'),
             ].join('\n');
 
-      const outlierNote = isOutlier
-        ? `ANOMALY: This station reads ${outlierRatio.toFixed(1)}× the peer median (${peerMedian.toFixed(1)} µg/m³). This is an outlier — consider sensor issues, a sheltered location, microclimate, or a very local source.`
-        : '';
+      // Outlier note injected into the data section so the model sees it before reasoning.
+      const outlierNote = isStrongOutlier
+        ? `⚠ STRONG OUTLIER: This station reads ${outlierRatio.toFixed(1)}× the peer median (${peerMedian.toFixed(1)} µg/m³). Nearby stations are much lower. Do NOT attribute this reading to regional smoke or fires — the most likely explanations are a sensor malfunction, a very localised source directly at the station, or a data reporting error.`
+        : isElevatedOutlier
+          ? `NOTE: This station reads ${outlierRatio.toFixed(1)}× the peer median (${peerMedian.toFixed(1)} µg/m³) — noticeably above its neighbours. Mention this discrepancy and consider whether a localised source or measurement uncertainty may be contributing.`
+          : '';
 
       const upwindQuadrant = windDir?.fromQuadrant ?? null;
       const upwindFireCount = upwindQuadrant ? quadrantCounts[upwindQuadrant] : 0;
@@ -356,9 +375,13 @@ ${dailyLines || '  No historical data'}
 WIND
 ${windStr}
 
-FIRES WITHIN ${FIRE_RADIUS_KM} KM (last 48 h ending ${selectedDate})
+${
+  !isStrongOutlier
+    ? `FIRES WITHIN ${effectiveRadiusKm} KM (last 48 h ending ${selectedDate})
 ${fireStr}
-${upwindQuadrant && upwindFireCount > 0 ? `→ ${upwindFireCount} fires in the upwind quadrant (${upwindQuadrant}), directly in the path of smoke toward this station` : ''}
+${upwindQuadrant && upwindFireCount > 0 ? `→ ${upwindFireCount} fires in the upwind quadrant (${upwindQuadrant}), directly in the path of smoke toward this station` : ''}`
+    : `FIRES: Omitted — reading is a strong outlier vs peer stations. Regional fire data is not relevant.`
+}
 
 PEER STATIONS WITHIN 75 KM (last 3 h)
 ${peerStr}
@@ -366,11 +389,13 @@ ${outlierNote ? `\n${outlierNote}` : ''}
 
 CONTEXT: April is peak dry season and agricultural burning season in mainland Southeast Asia (Thailand, Myanmar, Laos, Cambodia). Smoke can travel hundreds of kilometres under stable atmospheric conditions.
 
-Write 3–5 short paragraphs in plain English. No markdown headers, no bullet points — flowing prose only.
-- Describe the current reading and what it means for air quality.
-- ${latestPm25 > 35 ? `Reason about the likely sources. Fires in the quadrant that the wind is blowing FROM (${upwindQuadrant ?? 'unknown'}) are most likely to affect this station. Explain clearly if fires upwind appear to be a factor.` : 'Explain why conditions are currently good.'}
-- Comment on the trend over the past week.
-${isOutlier ? '- Explicitly note the anomaly versus nearby stations and suggest possible explanations.' : ''}
+Write 1–3 short paragraphs in plain English. No markdown headers, no bullet points — flowing prose only.
+Be concise — one paragraph is fine if it covers everything.
+The reader already sees the station name, PM2.5 value, and AQI category on screen — do not repeat these or explain what PM2.5 is. Lead directly with what is interesting: why the reading is what it is.
+- Compare this reading against peer stations first. If it is significantly above or below its neighbours, lead with that — it likely reflects a sensor issue, a very local source, or a measurement anomaly rather than regional air quality.
+- ${latestPm25 > 35 ? `Only mention fires if they are upwind and plausibly explain the reading. Never mention fires to dismiss them.` : 'Explain why conditions are currently good.'}
+- Do not describe the week trend — the user already sees the 7-day chart in the UI.
+${isStrongOutlier || isElevatedOutlier ? '- Suggest the most likely explanations for the anomaly (sensor issue, very local source, microclimate).' : ''}
 - Do not speculate beyond what the data shows. Be clear and accessible to a non-scientist.`;
 
       // Start streaming — hijack Fastify response so we control the raw socket
