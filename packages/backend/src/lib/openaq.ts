@@ -19,6 +19,7 @@ export interface OpenAQLocation {
   isMobile: boolean;
   isMonitor: boolean | null;
   sensors: OpenAQSensor[];
+  datetimeLast: { utc: string } | null | undefined;
 }
 
 interface OpenAQMeta {
@@ -35,8 +36,8 @@ interface OpenAQResponse {
 interface OpenAQHourResult {
   value: number;
   period: {
-    datetimeFrom: { utc: string };
-    datetimeTo: { utc: string };
+    datetimeFrom: { utc: string; local?: string };
+    datetimeTo: { utc: string; local?: string };
   } | null;
 }
 
@@ -59,6 +60,10 @@ export interface SensorFetchResult {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function extractPm25SensorIds(location: OpenAQLocation): number[] {
+  return location.sensors.filter((s) => s.parameter.name === 'pm25').map((s) => s.id);
+}
 
 function parseRateLimitHeaders(
   headers: Headers,
@@ -91,16 +96,26 @@ function parseRateLimitHeaders(
 export async function fetchSensorDailyAverage(
   apiKey: string,
   sensorId: number,
-  dateFrom: string,
-  dateTo: string,
+  targetDate: string, // YYYY-MM-DD in local time
+  timezoneOffsetHours = 7,
 ): Promise<SensorFetchResult> {
-  // The /sensors/{id}/days endpoint ignores datetime_from/datetime_to entirely and
-  // always returns the oldest available data (not the requested date). Use /hours instead —
-  // it respects date filters and covers all active sensors, including those whose /days
-  // aggregates are stale. We compute the daily mean from hourly readings ourselves.
+  // Uses /hours/daily rather than /days or /hours because:
+  // - /days is confirmed broken: ignores datetime_from/datetime_to entirely,
+  //   always returns the most recent available data (tested 2025-05-12).
+  // - /hours/daily is the working equivalent per OpenAQ docs and respects date filters.
+  // - /hours/daily requires timezone-aware datetime params (e.g. +07:00) — bare UTC
+  //   does not correctly bound the local calendar day.
+  // - Returns a single pre-computed daily mean, eliminating manual averaging over
+  //   up to 100 hourly records.
+  const sign = timezoneOffsetHours >= 0 ? '+' : '-';
+  const absHours = Math.abs(timezoneOffsetHours);
+  const tzOffset = `${sign}${String(absHours).padStart(2, '0')}:00`;
+
   const url =
-    `${BASE_URL}/sensors/${sensorId}/hours` +
-    `?datetime_from=${encodeURIComponent(dateFrom)}&datetime_to=${encodeURIComponent(dateTo)}&limit=100`;
+    `${BASE_URL}/sensors/${sensorId}/hours/daily` +
+    `?datetime_from=${encodeURIComponent(`${targetDate}T00:00:00${tzOffset}`)}` +
+    `&datetime_to=${encodeURIComponent(`${targetDate}T23:59:59${tzOffset}`)}` +
+    `&limit=1`;
 
   const MAX_RETRIES = 4;
   let attempt = 0;
@@ -133,17 +148,24 @@ export async function fetchSensorDailyAverage(
       throw new Error(`OpenAQ sensor ${sensorId} error: ${res.status} ${res.statusText}`);
 
     const data = (await res.json()) as OpenAQHoursResponse;
-    const valid = data.results.filter((r) => r.period !== null && r.value !== null);
+    if (data.results.length === 0) return { readings: [], ...rateLimit };
 
-    if (valid.length === 0) return { readings: [], ...rateLimit };
+    const result = data.results[0];
+    if (result.period === null || result.value === null) return { readings: [], ...rateLimit };
 
-    const avg = valid.reduce((sum, r) => sum + r.value, 0) / valid.length;
-    // Use the start of the queried UTC day as the canonical timestamp.
-    // This is consistent across all sensors and falls within the UTC-day window
-    // used by /api/measurements/latest?date=YYYY-MM-DD.
-    const dateUtc = dateFrom.slice(0, 10) + 'T00:00:00Z';
+    // Guard against stale-data responses (same failure mode as /days)
+    if (
+      result.period.datetimeFrom.local !== undefined &&
+      !result.period.datetimeFrom.local.startsWith(targetDate)
+    ) {
+      console.warn(
+        `[openaq] sensor ${sensorId}: date mismatch (expected ${targetDate}, got ${result.period.datetimeFrom.local}), skipping`,
+      );
+      return { readings: [], ...rateLimit };
+    }
 
-    return { readings: [{ value: avg, dateUtc }], ...rateLimit };
+    const dateUtc = `${targetDate}T00:00:00Z`;
+    return { readings: [{ value: result.value, dateUtc }], ...rateLimit };
   }
 }
 
