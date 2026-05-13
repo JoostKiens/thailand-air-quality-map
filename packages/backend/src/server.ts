@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import compress from '@fastify/compress';
 import { healthRoutes } from './routes/health';
 import { firesRoutes } from './routes/fires';
 import { measurementsRoutes } from './routes/measurements';
@@ -12,6 +13,7 @@ import { explainRoutes } from './routes/explain';
 
 const app = Fastify({ logger: true });
 
+await app.register(compress);
 await app.register(cors);
 await app.register(healthRoutes);
 await app.register(firesRoutes);
