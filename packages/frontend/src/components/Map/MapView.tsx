@@ -11,6 +11,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useFires } from '../../hooks/useFires';
 import { useAQI } from '../../hooks/useAQI';
 import { useAQGrid } from '../../hooks/useAQGrid';
+import { usePM25Bitmap } from '../../hooks/usePM25Bitmap';
 import { VIEWPORT_BBOX } from '../../lib/bbox';
 import { createFiresLayer } from '../../layers/FiresLayer';
 import { useWind } from '../../hooks/useWind';
@@ -52,6 +53,7 @@ export function MapView() {
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
   const { data: aqGrid } = useAQGrid();
+  const pm25Bitmap = usePM25Bitmap(aqGrid);
   const { data: wind } = useWind();
   const { data: powerPlants } = usePowerPlants();
 
@@ -82,13 +84,13 @@ export function MapView() {
     const beforeId = beforeIdRef.current;
     const layers = [];
 
-    if (aqGridConfig.visible) {
+    if (aqGridConfig.visible && pm25Bitmap) {
       layers.push(createLandMaskLayer(beforeId));
-      if (aqGrid) layers.push(createPM25BitmapLayer(aqGrid, beforeId));
+      layers.push(createPM25BitmapLayer(pm25Bitmap, beforeId));
     }
 
     heatmapOverlay.setProps({ layers });
-  }, [heatmapOverlay, aqGrid, aqGridConfig.visible]);
+  }, [heatmapOverlay, pm25Bitmap, aqGridConfig.visible]);
 
   // Data layers — non-interleaved overlay; render on a separate canvas above Mapbox.
   useEffect(() => {
