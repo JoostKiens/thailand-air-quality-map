@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { redis } from '../cache/client.js';
+import { redis, HISTORICAL_TTL_SECONDS } from '../cache/client.js';
 import { supabase } from '../db/client.js';
 
 const CACHE_KEY = 'power_plants:geojson';
-const CACHE_TTL = 24 * 60 * 60; // 24h
 
 interface PlantRow {
   id: number;
@@ -34,7 +33,7 @@ export function powerPlantsRoutes(app: FastifyInstance): void {
     }
 
     const geojson = buildGeojson(data as PlantRow[]);
-    await redis.set(CACHE_KEY, geojson, { ex: CACHE_TTL });
+    await redis.set(CACHE_KEY, geojson, { ex: HISTORICAL_TTL_SECONDS });
     return reply.send(geojson);
   });
 }
