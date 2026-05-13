@@ -3,7 +3,7 @@ import type { PowerPlantCollection } from '@thailand-aq/types';
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
-export function usePowerPlants() {
+export function usePowerPlants(enabled: boolean) {
   return useQuery({
     queryKey: ['power-plants'],
     queryFn: async () => {
@@ -12,5 +12,6 @@ export function usePowerPlants() {
       return (await res.json()) as PowerPlantCollection;
     },
     staleTime: Infinity, // static dataset, never changes
+    enabled,
   });
 }

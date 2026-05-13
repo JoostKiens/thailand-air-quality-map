@@ -58,7 +58,6 @@ export function MapView() {
   const { data: aqGrid } = useAQGrid();
   const pm25Bitmap = usePM25Bitmap(aqGrid);
   const { data: wind } = useWind();
-  const { data: powerPlants } = usePowerPlants();
 
   const aqGridConfig = useLayerStore((s) => s.layers.aqGrid);
   const aqStationsConfig = useLayerStore((s) => s.layers.aqStations);
@@ -70,8 +69,12 @@ export function MapView() {
 
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
+  const selectedPoint = useUIStore((s) => s.selectedPoint);
   const zoom = useUIStore((s) => s.mapZoom);
   const setMapZoom = useUIStore((s) => s.setMapZoom);
+
+  const powerPlantsEnabled = powerPlantsConfig.visible || !!selectedPoint?.station;
+  const { data: powerPlants } = usePowerPlants(powerPlantsEnabled);
 
   useWindParticles(windOverlay, map, wind, windConfig);
   usePrefetchAdjacentDates();
