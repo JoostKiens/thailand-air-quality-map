@@ -1,10 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { FirePoint } from '@thailand-aq/types';
 import { supabase } from '../db/client.js';
-import { redis } from '../cache/client.js';
+import { redis, HISTORICAL_TTL_SECONDS } from '../cache/client.js';
 import { parseBbox, DEFAULT_BBOX } from '../lib/bbox.js';
 
-const CACHE_TTL_SECONDS = 3 * 60 * 60; // 3 hours
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function firesRoutes(app: FastifyInstance): void {
@@ -28,7 +27,7 @@ export function firesRoutes(app: FastifyInstance): void {
     const data = await queryFires(date, date, bbox);
 
     if (isDefaultBbox) {
-      await redis.set(`fires:date:${date}`, data, { ex: CACHE_TTL_SECONDS });
+      await redis.set(`fires:date:${date}`, data, { ex: HISTORICAL_TTL_SECONDS });
     }
 
     return reply.send({ data });

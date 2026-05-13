@@ -1,11 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { PM25GridPoint } from '@thailand-aq/types';
-import { redis } from '../cache/client.js';
+import { redis, HISTORICAL_TTL_SECONDS } from '../cache/client.js';
 import { supabase } from '../db/client.js';
 import { parseBbox } from '../lib/bbox.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const CACHE_TTL_SECONDS = 48 * 60 * 60;
 
 export function aqRoutes(app: FastifyInstance): void {
   // GET /api/aq/pm25?date=YYYY-MM-DD&bbox=west,south,east,north
@@ -36,7 +35,7 @@ export function aqRoutes(app: FastifyInstance): void {
       points = data as PM25GridPoint[];
 
       // Re-populate Redis so subsequent requests within the TTL window skip Supabase
-      await redis.set(`aq:pm25:${date}`, points, { ex: CACHE_TTL_SECONDS });
+      await redis.set(`aq:pm25:${date}`, points, { ex: HISTORICAL_TTL_SECONDS });
     }
 
     const bbox = parseBbox(rawBbox);

@@ -1,10 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Measurement } from '@thailand-aq/types';
 import { supabase } from '../db/client.js';
-import { redis } from '../cache/client.js';
+import { redis, HISTORICAL_TTL_SECONDS } from '../cache/client.js';
 import { parseBbox, DEFAULT_BBOX } from '../lib/bbox.js';
 
-const CACHE_TTL_SECONDS = 24 * 60 * 60; // 24h — ingest runs once daily, no point caching shorter
 const VALID_PARAMETERS = ['pm25', 'pm10', 'no2', 'o3', 'so2', 'co', 'bc'] as const;
 const MAX_HISTORY_HOURS = 168; // 7 days
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
@@ -109,7 +108,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
       }
 
       if (isDefaultBbox) {
-        await redis.set(cacheKey, latest, { ex: CACHE_TTL_SECONDS });
+        await redis.set(cacheKey, latest, { ex: HISTORICAL_TTL_SECONDS });
       }
 
       return reply.send({ data: latest });
