@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { WeatherReading } from '@thailand-aq/types';
-import { redis } from '../cache/client.js';
+import { redis, HISTORICAL_TTL_SECONDS } from '../cache/client.js';
 import { supabase } from '../db/client.js';
 import { parseBbox } from '../lib/bbox.js';
 import { weatherCacheKey } from '../jobs/weather-ingest.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const CACHE_TTL_SECONDS = 25 * 60 * 60;
 
 export function weatherRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { date?: string; bbox?: string } }>('/api/weather', async (req, reply) => {
@@ -38,7 +37,7 @@ export function weatherRoutes(app: FastifyInstance): void {
       readings = data as WeatherReading[];
 
       // Re-populate Redis so subsequent requests within the TTL window skip Supabase
-      await redis.set(weatherCacheKey(date), readings, { ex: CACHE_TTL_SECONDS });
+      await redis.set(weatherCacheKey(date), readings, { ex: HISTORICAL_TTL_SECONDS });
     }
 
     const bbox = parseBbox(rawBbox);
