@@ -6,13 +6,14 @@ export const FUEL_COLORS: Record<string, string> = {
   Coal: '#999999',
   Gas: '#4a9edd',
   Oil: '#d4a017',
+  Diesel: '#c17f24',
 };
 
-const FUELS = ['Coal', 'Gas', 'Oil'];
+const FUELS = ['Coal', 'Gas', 'Oil', 'Diesel'];
 
 function buildAtlas(): string {
   const canvas = document.createElement('canvas');
-  canvas.width = 96;
+  canvas.width = 128;
   canvas.height = 32;
   const ctx = canvas.getContext('2d')!;
   FUELS.forEach((fuel, i) => {
@@ -38,6 +39,7 @@ const ICON_MAPPING = {
   Coal: { x: 0, y: 0, width: 32, height: 32, anchorY: 16 },
   Gas: { x: 32, y: 0, width: 32, height: 32, anchorY: 16 },
   Oil: { x: 64, y: 0, width: 32, height: 32, anchorY: 16 },
+  Diesel: { x: 96, y: 0, width: 32, height: 32, anchorY: 16 },
 };
 
 export function createPowerPlantsLayer(

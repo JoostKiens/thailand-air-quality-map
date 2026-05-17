@@ -7,8 +7,19 @@ import { redis } from '../cache/client.js';
 const WRI_URL =
   'https://raw.githubusercontent.com/wri/global-power-plant-database/master/output_database/global_power_plant_database.csv';
 
-const TARGET_COUNTRIES = new Set(['THA', 'MMR', 'LAO', 'KHM', 'MYS', 'BGD', 'IND', 'CHN']);
-const TARGET_FUELS = new Set(['Coal', 'Gas', 'Oil']);
+const TARGET_COUNTRIES = new Set([
+  'THA', // Thailand
+  'MMR', // Myanmar
+  'LAO', // Laos
+  'KHM', // Cambodia
+  'MYS', // Malaysia
+  'BGD', // Bangladesh
+  'IND', // India
+  'CHN', // China
+  'BTN', // Bhutan
+  'VNM', // Vietnam
+]);
+const TARGET_FUELS = new Set(['Coal', 'Gas', 'Oil', 'Diesel']);
 const CACHE_KEY = 'power_plants:geojson';
 
 interface WriRow {
