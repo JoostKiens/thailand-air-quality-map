@@ -1,9 +1,14 @@
 import { useLayerStore } from '../../../store/layerStore';
-import { useUIStore } from '../../../store/uiStore';
 import { AQI_CATEGORIES } from '../../../lib/aqiColors';
 import { FUEL_COLORS } from '../../../layers/PowerPlantsLayer';
-import { baseRadiusForZoom } from '../../../layers/FiresLayer';
 import { Toggle } from './Toggle';
+
+const FIRE_TIERS = [
+  { label: 'Small', range: '< 10', r: 3 },
+  { label: 'Moderate', range: '10–50', r: 4 },
+  { label: 'Large', range: '50–200', r: 6 },
+  { label: 'Extreme', range: '> 200', r: 8 },
+];
 
 function GroupHeader({
   label,
@@ -96,28 +101,9 @@ function AirQualityGroup() {
   );
 }
 
-// Display radii per zoom tier × intensity extreme.
-// Layer uses pixel radii 1/3/6; these are scaled for legibility, not pixel-accurate.
-function fireLegendRadii(baseR: number): [lowR: number, highR: number] {
-  if (baseR === 1) return [3, 6];
-  if (baseR === 3) return [5, 9];
-  return [7, 12]; // baseR === 6
-}
-
-function FireSwatch({ r, dim }: { r: number; dim?: boolean }) {
-  const size = r * 2;
-  return (
-    <svg width={size} height={size} className="shrink-0">
-      <circle cx={r} cy={r} r={r - 0.5} fill="#f97316" fillOpacity={dim ? 0.35 : 0.9} />
-    </svg>
-  );
-}
-
 function FiresGroup() {
   const visible = useLayerStore((s) => s.layers.fires.visible);
   const toggleLayer = useLayerStore((s) => s.toggleLayer);
-  const zoom = useUIStore((s) => s.mapZoom);
-  const [lowR, highR] = fireLegendRadii(baseRadiusForZoom(zoom));
 
   return (
     <article className="px-4 py-3">
@@ -128,21 +114,29 @@ function FiresGroup() {
         toggleLabel="Toggle fires"
       />
       {visible && (
-        <div className="mt-2.5 space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-6 flex items-center justify-center shrink-0">
-              <FireSwatch r={lowR} dim />
-            </span>
-            <span className="text-[10px] text-gray-400">Low FRP</span>
+        <div className="mt-2.5 space-y-1">
+          <div className="flex justify-end mb-0.5">
+            <span className="text-[9px] text-gray-400">MW</span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="w-6 flex items-center justify-center shrink-0">
-              <FireSwatch r={highR} />
-            </span>
-            <span className="text-[10px] text-gray-400">High FRP</span>
-          </div>
-          <p className="text-[9px] text-gray-400 mt-1">
-            Size scales with zoom &amp; fire radiative power
+          {FIRE_TIERS.map((tier) => (
+            <div key={tier.label} className="flex items-center gap-2">
+              <span className="shrink-0 w-6 flex items-center justify-center">
+                <svg width={tier.r * 2} height={tier.r * 2} className="shrink-0">
+                  <circle
+                    cx={tier.r}
+                    cy={tier.r}
+                    r={tier.r - 0.5}
+                    fill="#f97316"
+                    fillOpacity={0.9}
+                  />
+                </svg>
+              </span>
+              <span className="flex-1 text-[10px] text-gray-500 leading-tight">{tier.label}</span>
+              <span className="text-[9px] text-gray-400 font-mono tabular-nums">{tier.range}</span>
+            </div>
+          ))}
+          <p className="text-[10px] text-gray-500 leading-tight mt-1.5">
+            Fire radiative power (FRP) is a proxy for smoke and PM2.5 emissions
           </p>
         </div>
       )}
