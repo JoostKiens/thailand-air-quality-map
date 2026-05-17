@@ -6,6 +6,28 @@ import { parseBbox } from '../lib/bbox.js';
 import { weatherCacheKey } from '../jobs/weather-ingest.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SIZE = 1000;
+
+async function fetchWeatherFromDb(date: string): Promise<WeatherReading[]> {
+  const all: WeatherReading[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('weather_readings')
+      .select(
+        'lat, lng, wind_speed_kmh, wind_speed_max_kmh, wind_direction_deg, relative_humidity_2m, precipitation_sum',
+      )
+      .eq('date', date)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw new Error(`Supabase weather_readings query failed: ${error.message}`);
+    if (!data?.length) break;
+    all.push(...(data as WeatherReading[]));
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
 
 export function weatherRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { date?: string; bbox?: string } }>('/api/weather', async (req, reply) => {
@@ -17,24 +39,14 @@ export function weatherRoutes(app: FastifyInstance): void {
 
     let readings = await redis.get<WeatherReading[]>(weatherCacheKey(date));
 
-    if (!readings?.length) {
-      // Redis miss — fall back to Supabase
-      const { data, error } = await supabase
-        .from('weather_readings')
-        .select(
-          'lat, lng, wind_speed_kmh, wind_speed_max_kmh, wind_direction_deg, relative_humidity_2m, precipitation_sum',
-        )
-        .eq('date', date);
+    if (!readings?.length || readings.length < 4000) {
+      readings = await fetchWeatherFromDb(date);
 
-      if (error) throw new Error(`Supabase weather_readings query failed: ${error.message}`);
-
-      if (!data?.length) {
+      if (!readings.length) {
         return reply
           .status(404)
           .send({ error: 'No weather data for this date. Run the ingest job.' });
       }
-
-      readings = data as WeatherReading[];
 
       // Re-populate Redis so subsequent requests within the TTL window skip Supabase
       await redis.set(weatherCacheKey(date), readings, { ex: HISTORICAL_TTL_SECONDS });

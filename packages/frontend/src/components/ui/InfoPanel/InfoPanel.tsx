@@ -8,7 +8,7 @@ import { AqiBadge } from './AqiBadge';
 import { pm25ToRgb, pm25ToCategory } from '../../../lib/aqiColors';
 import { reverseGeocode } from '../../../lib/geocode';
 import { findNearestAQPoint, findNearestWind, degToCompass } from '../../../lib/ambient';
-import { useAQGrid } from '../../../hooks/useAQGrid';
+import { useCamsGrid } from '../../../hooks/useCamsGrid';
 import { useAQI } from '../../../hooks/useAQI';
 import { useWind } from '../../../hooks/useWind';
 
@@ -27,7 +27,7 @@ export function InfoPanel() {
   const selectedPoint = useUIStore((s) => s.selectedPoint);
   const setSelectedPoint = useUIStore((s) => s.setSelectedPoint);
   const selectedDate = useTimeStore((s) => s.selectedDate);
-  const { data: aqGrid } = useAQGrid();
+  const { data: aqGrid } = useCamsGrid();
   const { data: aqData, isLoading: aqLoading } = useAQI();
   const { data: wind } = useWind();
 

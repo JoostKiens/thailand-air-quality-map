@@ -10,7 +10,7 @@ import { useLayerStore } from '../../store/layerStore';
 import { useUIStore } from '../../store/uiStore';
 import { useFires } from '../../hooks/useFires';
 import { useAQI } from '../../hooks/useAQI';
-import { useAQGrid } from '../../hooks/useAQGrid';
+import { useCamsGrid } from '../../hooks/useCamsGrid';
 import { usePM25Bitmap } from '../../hooks/usePM25Bitmap';
 import { VIEWPORT_BBOX } from '../../lib/bbox';
 import { createFiresLayer } from '../../layers/FiresLayer';
@@ -56,7 +56,7 @@ export function MapView() {
 
   const { data: fires } = useFires();
   const { data: aqi } = useAQI();
-  const { data: aqGrid } = useAQGrid();
+  const { data: aqGrid } = useCamsGrid();
   const pm25Bitmap = usePM25Bitmap(aqGrid);
   const { data: wind } = useWind();
 

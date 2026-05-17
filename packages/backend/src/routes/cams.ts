@@ -5,6 +5,26 @@ import { supabase } from '../db/client.js';
 import { parseBbox } from '../lib/bbox.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SIZE = 1000;
+
+async function fetchCamsGridFromDb(date: string): Promise<PM25GridPoint[]> {
+  const all: PM25GridPoint[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('cams_grid')
+      .select('lat, lng, pm25')
+      .eq('date', date)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw new Error(`Supabase cams_grid query failed: ${error.message}`);
+    if (!data?.length) break;
+    all.push(...(data as PM25GridPoint[]));
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
 
 export function camsRoutes(app: FastifyInstance): void {
   // GET /api/cams?date=YYYY-MM-DD&bbox=west,south,east,north
@@ -17,22 +37,14 @@ export function camsRoutes(app: FastifyInstance): void {
 
     let points = await redis.get<PM25GridPoint[]>(`cams:pm25:${date}`);
 
-    if (!points?.length) {
-      // Redis miss — fall back to Supabase
-      const { data, error } = await supabase
-        .from('cams_grid')
-        .select('lat, lng, pm25')
-        .eq('date', date);
+    if (!points?.length || points.length < 4000) {
+      points = await fetchCamsGridFromDb(date);
 
-      if (error) throw new Error(`Supabase cams_grid query failed: ${error.message}`);
-
-      if (!data?.length) {
+      if (!points.length) {
         return reply
           .status(404)
           .send({ error: 'No CAMS grid data for this date. Run the ingest job.' });
       }
-
-      points = data as PM25GridPoint[];
 
       // Re-populate Redis so subsequent requests within the TTL window skip Supabase
       await redis.set(`cams:pm25:${date}`, points, { ex: HISTORICAL_TTL_SECONDS });

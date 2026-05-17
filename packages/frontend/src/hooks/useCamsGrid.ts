@@ -4,7 +4,7 @@ import type { PM25GridPoint } from '@thailand-aq/types';
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
-export function useAQGrid() {
+export function useCamsGrid() {
   const selectedDate = useTimeStore((s) => s.selectedDate);
   return useQuery({
     queryKey: ['cams-grid', selectedDate],

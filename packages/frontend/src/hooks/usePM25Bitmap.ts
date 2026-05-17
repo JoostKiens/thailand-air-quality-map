@@ -17,6 +17,9 @@ export function usePM25Bitmap(data: PM25GridPoint[] | undefined): ImageBitmap | 
         return e.data.bitmap;
       });
     };
+    worker.onerror = (e) => {
+      console.error('[pm25 worker] error:', e.message, e);
+    };
 
     return () => {
       worker.terminate();
