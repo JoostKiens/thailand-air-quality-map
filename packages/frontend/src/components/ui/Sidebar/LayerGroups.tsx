@@ -156,6 +156,16 @@ function WindGroup() {
         onToggle={() => toggleLayer('wind')}
         toggleLabel="Toggle wind"
       />
+      {visible && (
+        <div className="mt-1 space-y-0.5">
+          <p className="text-[10px] text-gray-500 leading-tight">
+            Particle speed reflects wind strength
+          </p>
+          <p className="text-[10px] text-gray-500 leading-tight">
+            Snapshot at 14:00 local time (UTC+7)
+          </p>
+        </div>
+      )}
     </article>
   );
 }
