@@ -11,6 +11,11 @@ const TRAIL_LENGTH = 14;
 // Degrees of movement per frame per km/h of wind speed (at 60 fps).
 // Tuned so a 15 km/h breeze visually crosses the region in ~15 s.
 const ANIM_SCALE = 0.003;
+// Below this speed the trail is always at full TRAIL_LENGTH.
+// Above it, trail point count shrinks as √(TRAIL_SPEED_REF / speed) so total
+// geographic trail length grows as √speed rather than linearly — preventing
+// fast-wind trails from dominating the visual at the expense of animation speed.
+const TRAIL_SPEED_REF = 13; // km/h
 const BASE_ZOOM = 5.5;
 const MIN_AGE = 80;
 const MAX_AGE = 220;
@@ -141,7 +146,12 @@ function stepParticles(
     p.lat += dy * ANIM_SCALE * dtScale;
 
     p.trail.unshift([p.lng, p.lat]);
-    if (p.trail.length > TRAIL_LENGTH) p.trail.length = TRAIL_LENGTH;
+    const speed = Math.sqrt(dx * dx + dy * dy); // == wind_speed_kmh at this cell
+    const maxTrail =
+      speed > TRAIL_SPEED_REF
+        ? Math.max(2, Math.round(TRAIL_LENGTH * Math.sqrt(TRAIL_SPEED_REF / speed)))
+        : TRAIL_LENGTH;
+    if (p.trail.length > maxTrail) p.trail.length = maxTrail;
     p.age++;
 
     // OOB against the full static grid bbox — particles live freely across
