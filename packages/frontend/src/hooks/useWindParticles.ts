@@ -203,6 +203,12 @@ export function useWindParticles(
     };
   }, [map]);
 
+  // Clear the overlay when wind data is unavailable (e.g. 404 on dates with no ingest).
+  useEffect(() => {
+    if (!overlay || wind?.length) return;
+    overlay.setProps({ layers: [] });
+  }, [wind, overlay]);
+
   // Rebuild grid and reset particles whenever wind data changes.
   useEffect(() => {
     if (!wind?.length) return;
