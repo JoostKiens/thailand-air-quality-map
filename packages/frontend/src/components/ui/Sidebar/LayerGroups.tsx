@@ -5,13 +5,6 @@ import { FUEL_COLORS } from '../../../layers/PowerPlantsLayer';
 import { baseRadiusForZoom } from '../../../layers/FiresLayer';
 import { Toggle } from './Toggle';
 
-function rgbToHex([r, g, b]: [number, number, number]): string {
-  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
-
-const AQI_GRADIENT = AQI_CATEGORIES.map((c) => rgbToHex(c.rgb)).join(', ');
-const AQI_SHORT_LABELS = ['Good', 'Mod.', 'USG', 'Unhealthy', 'V.Bad', 'Hazard'];
-
 function GroupHeader({
   label,
   checked,
@@ -35,18 +28,25 @@ function GroupHeader({
 
 function SubRow({
   label,
+  description,
   checked,
   onToggle,
   toggleLabel,
 }: {
   label: string;
+  description?: string;
   checked: boolean;
   onToggle: () => void;
   toggleLabel: string;
 }) {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <span className="flex-1 text-sm text-gray-400">{label}</span>
+    <div className="flex items-start gap-2 py-1">
+      <div className="flex-1">
+        <span className="text-sm text-gray-400">{label}</span>
+        {description && (
+          <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{description}</p>
+        )}
+      </div>
       <Toggle checked={checked} onChange={onToggle} label={toggleLabel} />
     </div>
   );
@@ -61,31 +61,32 @@ function AirQualityGroup() {
     <article className="px-4 py-3">
       <GroupHeader label="Air Quality (PM2.5)" />
       <SubRow
-        label="Open-Meteo background"
-        checked={aqGrid}
-        onToggle={() => toggleLayer('aqGrid')}
-        toggleLabel="Toggle AQ grid"
-      />
-      <SubRow
-        label="OpenAQ stations"
+        label="Station readings"
+        description="Ground measurements from monitoring stations"
         checked={aqStations}
         onToggle={() => toggleLayer('aqStations')}
-        toggleLabel="Toggle OpenAQ stations"
+        toggleLabel="Toggle station readings"
       />
+      <SubRow
+        label="Ambient"
+        description="Modeled estimate · ~40 km resolution"
+        checked={aqGrid}
+        onToggle={() => toggleLayer('aqGrid')}
+        toggleLabel="Toggle ambient"
+      />
+
       {(aqGrid || aqStations) && (
-        <div className="mt-2.5">
-          <p className="text-[9px] text-gray-400 mb-0.5">µg/m³ PM2.5</p>
-          <div
-            className="h-2 rounded-full mb-1"
-            style={{ background: `linear-gradient(to right, ${AQI_GRADIENT})` }}
-          />
-          <div className="flex justify-between">
-            {AQI_SHORT_LABELS.map((l) => (
-              <span key={l} className="text-[9px] text-gray-400 leading-tight">
-                {l}
-              </span>
-            ))}
-          </div>
+        <div className="mt-2.5 space-y-1">
+          {AQI_CATEGORIES.map((cat) => (
+            <div key={cat.label} className="flex items-center gap-2">
+              <span
+                className="shrink-0 w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: `rgb(${cat.rgb[0]},${cat.rgb[1]},${cat.rgb[2]})` }}
+              />
+              <span className="flex-1 text-[10px] text-gray-500 leading-tight">{cat.label}</span>
+              <span className="text-[9px] text-gray-400 font-mono tabular-nums">{cat.range}</span>
+            </div>
+          ))}
         </div>
       )}
     </article>

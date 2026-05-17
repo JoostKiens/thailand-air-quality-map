@@ -254,7 +254,7 @@ function SecondarySection({
   aqPoint,
   windVec,
 }: {
-  aqPoint: { pm25: number } | null;
+  aqPoint?: { pm25: number } | null;
   windVec: { wind_speed_kmh: number; wind_direction_deg: number } | null;
 }) {
   if (!aqPoint && !windVec) return null;
@@ -265,7 +265,7 @@ function SecondarySection({
       <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Ambient</p>
       {aqPoint && (
         <div className="flex justify-between items-center text-xs py-1">
-          <span className="text-gray-500">AQ grid</span>
+          <span className="text-gray-500">PM2.5</span>
           <AqiBadge value={aqPoint.pm25} category={pm25ToCategory(aqPoint.pm25).label} />
         </div>
       )}
@@ -287,7 +287,6 @@ function SecondarySection({
 function StationPanel({
   station,
   lngLat,
-  aqPoint,
   windVec,
   history,
 }: {
@@ -325,7 +324,7 @@ function StationPanel({
           </span>
         </Row>
       )}
-      <SecondarySection aqPoint={aqPoint} windVec={windVec} />
+      <SecondarySection windVec={windVec} />
       {history.status !== 'idle' && history.status !== 'error' && (
         <>
           <hr className="border-gray-100 my-2" />
