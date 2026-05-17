@@ -268,7 +268,9 @@ export function MapView() {
       mapInstance.on('mousemove', (e) => {
         let picked = false;
         try {
-          picked = !!dataOv.pickObject({ x: e.point.x, y: e.point.y });
+          picked =
+            !!dataOv.pickObject({ x: e.point.x, y: e.point.y }) ||
+            !!powerPlantsOv.pickObject({ x: e.point.x, y: e.point.y });
         } catch {
           // overlay not yet initialised
         }
