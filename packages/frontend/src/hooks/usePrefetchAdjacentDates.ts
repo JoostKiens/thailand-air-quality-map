@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { FirePoint, WeatherReading, PM25GridPoint } from '@thailand-aq/types';
+import type { FirePoint, WindReading, PM25GridPoint } from '@thailand-aq/types';
 import { useTimeStore } from '../store/timeStore';
 import type { LatestMeasurement } from './useAQI';
 
@@ -53,11 +53,11 @@ export function usePrefetchAdjacentDates(latestDate?: string) {
       });
 
       void queryClient.prefetchQuery({
-        queryKey: ['weather', date],
+        queryKey: ['weather-wind', date],
         queryFn: async () => {
-          const res = await fetch(`${API}/api/weather?date=${date}`);
-          if (!res.ok) throw new Error(`weather fetch failed: ${res.status}`);
-          return ((await res.json()) as { data: WeatherReading[] }).data;
+          const res = await fetch(`${API}/api/weather/wind?date=${date}`);
+          if (!res.ok) throw new Error(`wind fetch failed: ${res.status}`);
+          return ((await res.json()) as { data: WindReading[] }).data;
         },
         staleTime: Infinity,
       });

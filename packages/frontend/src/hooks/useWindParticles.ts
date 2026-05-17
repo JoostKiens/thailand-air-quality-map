@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { PathLayer } from 'deck.gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import type { WeatherReading } from '@thailand-aq/types';
+import type { WindReading } from '@thailand-aq/types';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ type WindGrid = Float32Array; // [dx0, dy0, dx1, dy1, ...]
 
 // ─── grid helpers ─────────────────────────────────────────────────────────────
 
-function buildGrid(data: WeatherReading[]): WindGrid {
+function buildGrid(data: WindReading[]): WindGrid {
   const grid = new Float32Array(GRID_LNG_COUNT * GRID_LAT_COUNT * 2);
   for (const v of data) {
     const lngIdx = Math.round((v.lng - GRID_LNG_MIN) / GRID_STEP);
@@ -169,7 +169,7 @@ function stepParticles(
 export function useWindParticles(
   overlay: MapboxOverlay | null,
   map: mapboxgl.Map | null,
-  wind: WeatherReading[] | undefined,
+  wind: WindReading[] | undefined,
   config: { visible: boolean; opacity: number },
 ): void {
   // Use a single mutable ref object to avoid stale closure issues in the rAF loop.

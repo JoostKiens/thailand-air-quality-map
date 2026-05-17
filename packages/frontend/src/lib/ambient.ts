@@ -1,4 +1,4 @@
-import type { PM25GridPoint, WeatherReading } from '@thailand-aq/types';
+import type { PM25GridPoint, WindReading } from '@thailand-aq/types';
 
 const COMPASS = [
   'N',
@@ -44,12 +44,12 @@ export function findNearestAQPoint(
 }
 
 export function findNearestWind(
-  vectors: WeatherReading[],
+  vectors: WindReading[],
   lng: number,
   lat: number,
-): WeatherReading | null {
+): WindReading | null {
   if (!vectors.length) return null;
-  let best: WeatherReading | null = null;
+  let best: WindReading | null = null;
   let bestDist = Infinity;
   for (const v of vectors) {
     const d = (v.lng - lng) ** 2 + (v.lat - lat) ** 2;
