@@ -59,9 +59,6 @@ export function createPowerPlantsLayer(
     getSize: 28,
     opacity,
     pickable: true,
-    // alphaCutoff: 0 makes the entire icon bounding box pickable, not just
-    // the filled diamond area.
-    alphaCutoff: 0,
     onClick,
     parameters: { depthCompare: 'always' as const, depthWriteEnabled: false },
   });
