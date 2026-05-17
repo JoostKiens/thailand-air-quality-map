@@ -44,9 +44,17 @@ const ICON_MAPPING = {
   Diesel: { x: 96, y: 0, width: 32, height: 32, anchorY: 16 },
 };
 
+export function iconSizeForZoom(zoom: number): number {
+  if (zoom >= 12) return 32;
+  if (zoom >= 8) return 26;
+  if (zoom >= 4) return 22;
+  return 18;
+}
+
 export function createPowerPlantsLayer(
   data: PowerPlantCollection,
   opacity: number,
+  zoom: number,
   onClick: (info: PickingInfo) => void,
 ): Layer {
   return new IconLayer<PowerPlantFeature>({
@@ -56,7 +64,7 @@ export function createPowerPlantsLayer(
     iconMapping: ICON_MAPPING,
     getPosition: (d) => d.geometry.coordinates,
     getIcon: (d) => d.properties.fuel_type,
-    getSize: 28,
+    getSize: iconSizeForZoom(zoom),
     opacity,
     pickable: true,
     onClick,

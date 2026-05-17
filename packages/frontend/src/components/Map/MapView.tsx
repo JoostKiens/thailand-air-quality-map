@@ -23,7 +23,7 @@ import {
   CLUSTER_MAX_ZOOM,
 } from '../../layers/PM25Layer';
 import { usePowerPlants } from '../../hooks/usePowerPlants';
-import { createPowerPlantsLayer } from '../../layers/PowerPlantsLayer';
+import { createPowerPlantsLayer, iconSizeForZoom } from '../../layers/PowerPlantsLayer';
 import { usePrefetchAdjacentDates } from '../../hooks/usePrefetchAdjacentDates';
 import { useLatestDate } from '../../hooks/useLatestDate';
 
@@ -101,7 +101,7 @@ export function MapView() {
     heatmapOverlay.setProps({ layers });
   }, [heatmapOverlay, pm25Bitmap, aqGridConfig.visible]);
 
-  // Power plants — isolated overlay, not zoom-dependent, never rebuilt on zoom changes.
+  // Power plants — rebuilt when zoom crosses tier thresholds (icon size is zoom-dependent).
   useEffect(() => {
     if (!powerPlantsOverlay) return;
 
@@ -125,7 +125,7 @@ export function MapView() {
 
     const layers =
       powerPlantsConfig.visible && powerPlants
-        ? [createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, onPowerPlantClick)]
+        ? [createPowerPlantsLayer(powerPlants, powerPlantsConfig.opacity, zoom, onPowerPlantClick)]
         : [];
 
     powerPlantsOverlay.setProps({ layers });
@@ -134,6 +134,7 @@ export function MapView() {
     powerPlants,
     powerPlantsConfig.visible,
     powerPlantsConfig.opacity,
+    iconSizeForZoom(zoom),
     setSelectedPoint,
   ]);
 
