@@ -121,7 +121,7 @@ export function Scrubber() {
             {formatTickDate(dayToDate(Math.floor((DAYS - 1) / 2), latestDate))}
           </span>
           <span className="text-[10px] text-gray-400">
-            {latestDate ? formatTickDate(latestDate) : '—'}
+            {latestDate ? `${formatTickDate(latestDate)} · UTC+7` : '—'}
           </span>
         </div>
       </div>
