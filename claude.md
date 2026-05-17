@@ -302,7 +302,7 @@ Station metadata and measurement ingestion are split across two separate jobs:
 
 - `stations-ingest` (weekly): upserts location metadata into `stations`, including `pm25_sensor_ids`
   (array of OpenAQ sensor IDs) and `datetime_last`. Skips locations where `datetimeLast > 30 days`.
-- `aqi-ingest` (daily, `0 4 * * *` UTC): reads `pm25_sensor_ids` directly from
+- `aqi-ingest` (two-pass daily): reads `pm25_sensor_ids` directly from
   `SELECT id, pm25_sensor_ids FROM stations WHERE pm25_sensor_ids != '{}'`. No API call
   to `/locations` is made during daily ingest. A location may have multiple pm25 sensors
   (e.g. collocated reference and low-cost instruments) — each is fetched and stored as a
@@ -311,8 +311,9 @@ Station metadata and measurement ingestion are split across two separate jobs:
   are retained in the array for future use. On fresh deployment, run `stations-ingest` before
   the first `aqi-ingest` run.
 
-Parameters to ingest: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`, `bc`.
-Skip `temperature` and `humidity` — meteorological context comes from Open-Meteo.
+Parameter ingested: `pm25` only. The `pm25_sensor_ids` column drives which sensors are fetched;
+no other parameters are currently ingested. The `measurements` table schema supports additional
+parameters for future use.
 
 The `aqi_readings` table from earlier designs has been replaced by the
 `stations` + `measurements` two-table design. Do not recreate `aqi_readings`.
@@ -477,23 +478,30 @@ firms-ingest       — daily     (0 10 * * *)     fetches VIIRS data for TODAY (
 stations-ingest    — weekly    (0 0 * * 0)      fetches OpenAQ locations by bbox, upserts stations table
                                                 including pm25_sensor_ids and datetime_last;
                                                 skips locations where datetimeLast > 30 days
-aq-ingest          — daily     (0 1 * * *)      fetches Open-Meteo CAMS PM2.5 grid for YESTERDAY (UTC);
-                                                runs before aqi/weather so the grid is ready when
-                                                /api/latest-date is first queried in the morning
+aq-ingest          — daily     (0 23 * * *)     fetches CAMS PM2.5 grid for TODAY (UTC) via
+  ingest-aq-today                               ingest-aq-today.ts; single pass only — CAMS is a
+                                                deterministic model so values don't change between
+                                                runs; makes grid visible by ~23:30 UTC (06:30 BKK)
 prune              — daily     (0 2 * * *)      deletes fire_points, measurements, aq_grid rows > 40 days
-aqi-ingest         — daily     (0 4 * * *)      reads pm25_sensor_ids from stations table (no fetchLocations call),
-                                                fetches daily averages for YESTERDAY via /hours/daily;
-                                                OpenAQ uses BKK (+07:00) day boundaries — yesterday's full
-                                                24h window closes at 16:59 UTC, giving OpenAQ 11h to process
-weather-ingest     — daily     (0 4 * * *)      fetches Open-Meteo weather grid for YESTERDAY (07:00 UTC
-                                                snapshot); upserts to Supabase weather_readings and Redis
-                                                (weather:{date}, TTL 25h)
+aqi-ingest (pass 1)— daily     (0 23 * * *)     reads pm25_sensor_ids from stations table, fetches pm25
+  ingest-aqi-today                              daily averages for TODAY via /hours/daily;
+                                                BKK day closes at 16:59 UTC — 6h processing buffer.
+                                                Makes measurements visible by ~23:30 UTC (06:30 BKK).
+aqi-ingest (pass 2)— daily     (0 4 * * *)      fetches pm25 daily averages for YESTERDAY as safety net
+  ingest-aqi                                    and to overwrite any partial values pass 1 wrote before
+                                                all stations had reported (ignoreDuplicates: false)
+weather-ingest     — daily     (0 8 * * *)      fetches Open-Meteo weather grid for TODAY at the 07:00 UTC
+  ingest-weather-today                          (14:00 BKK) snapshot via forecast API; upserts to Supabase
+                                                weather_readings and Redis (weather:{date}, TTL 25h).
+                                                Yesterday's reading (stored during the previous day's run)
+                                                is what the UI displays for the latest-date.
 ```
 
 All times are UTC (Railway runs in UTC). The UI shows the most recent date where all three
 gating sources have complete data (AQ grid ≥ 4,000 rows, fires ≥ 1, measurements ≥ 1),
-served by GET /api/latest-date. This date becomes available at ~04:30 UTC each day (11:30 BKK)
-after aqi-ingest and weather-ingest complete.
+served by GET /api/latest-date. The date typically becomes available at ~23:30 UTC (06:30 BKK).
+If aqi-ingest pass 1 misses slow-reporting stations, pass 2 fills gaps at ~04:30 UTC (11:30 BKK).
+See docs/adr/0001-two-pass-ingest-schedule.md.
 
 Each script exits with code 0 on success and non-zero on failure. Retry logic is
 implemented within the script (3 attempts with exponential backoff where applicable).

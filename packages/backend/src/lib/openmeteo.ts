@@ -129,14 +129,11 @@ async function fetchWeatherBatch(
     throw new Error(msg);
   }
 
-  const nowUtc = Date.now();
   const raw = (await res.json()) as OpenMeteoWeatherResult | OpenMeteoWeatherResult[];
   const results = Array.isArray(raw) ? raw : [raw];
 
   return results.map((loc) => {
-    const idx = isToday
-      ? currentHourIndex(loc.hourly.time, nowUtc)
-      : targetHourIndex(loc.hourly.time, date, HISTORICAL_HOUR_UTC);
+    const idx = targetHourIndex(loc.hourly.time, date, HISTORICAL_HOUR_UTC);
     return {
       lat: loc.latitude,
       lng: loc.longitude,
@@ -334,16 +331,6 @@ export async function fetchAirQualityGrid(date: string): Promise<PM25GridPoint[]
 // ─── Shared time helpers ──────────────────────────────────────────────────────
 
 // Find the index of the latest past hour in the time array
-function currentHourIndex(times: string[], nowMs: number): number {
-  let best = 0;
-  for (let i = 0; i < times.length; i++) {
-    const t = new Date(times[i] + ':00Z').getTime();
-    if (t <= nowMs) best = i;
-    else break;
-  }
-  return best;
-}
-
 function parseOpenMeteoUtcMs(time: string): number {
   if (/[Zz]|[+-]\d{2}(?::?\d{2})?$/.test(time)) {
     return Date.parse(time);

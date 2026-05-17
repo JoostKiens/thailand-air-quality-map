@@ -125,10 +125,12 @@ export async function runAqiIngest(date?: string): Promise<{
     const batch = measurementRows.slice(i, i + BATCH_SIZE);
     const { error } = await supabase
       .from('measurements')
-      .upsert(batch, { onConflict: 'sensor_id,measured_at', ignoreDuplicates: true });
+      .upsert(batch, { onConflict: 'sensor_id,measured_at', ignoreDuplicates: false });
 
     if (error) {
-      throw new Error(`Measurements upsert failed (batch ${i / BATCH_SIZE + 1}): ${error.message}`);
+      throw new Error(
+        `[aqi-ingest] Measurements upsert failed (batch ${i / BATCH_SIZE + 1}): ${error.message}`,
+      );
     }
   }
 

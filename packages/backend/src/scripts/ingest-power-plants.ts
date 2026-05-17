@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../db/client.js';

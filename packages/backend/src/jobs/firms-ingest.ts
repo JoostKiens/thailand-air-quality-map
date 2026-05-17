@@ -30,6 +30,7 @@ export async function runFirmsIngest(date?: string): Promise<{ inserted: number 
   console.log(`[firms-ingest] Fetched ${rows.length} rows`);
 
   if (rows.length === 0) {
+    console.warn(`[firms-ingest] No fire data returned for ${targetDate} — skipping writes`);
     return { inserted: 0 };
   }
 
