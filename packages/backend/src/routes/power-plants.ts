@@ -45,7 +45,7 @@ export function powerPlantsRoutes(app: FastifyInstance): void {
         .send({ error: 'Power plant data unavailable — run ingest:power-plants' });
     }
 
-    const geojson = buildGeojson(data as PlantRow[]);
+    const geojson = buildGeojson(allRows);
     await redis.set(CACHE_KEY, geojson, { ex: HISTORICAL_TTL_SECONDS });
     return reply.header('Cache-Control', CACHE_CONTROL_IMMUTABLE).send(geojson);
   });
