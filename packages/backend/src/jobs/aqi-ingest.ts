@@ -18,7 +18,16 @@ export async function runAqiIngest(date?: string): Promise<{
   const apiKey = process.env.OPENAQ_API_KEY;
   if (!apiKey) throw new Error('OPENAQ_API_KEY env var is required');
 
-  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+  // Default to yesterday: the OpenAQ endpoint uses BKK (+07:00) day boundaries, so a complete
+  // 24-hour average for "day D" isn't available until 17:00 UTC on day D. Running at 04:00 UTC
+  // means today's BKK day is only ~11 hours old — fetch yesterday instead.
+  const targetDate =
+    date ??
+    (() => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    })();
 
   const { data: stationRows, error: stationsError } = await supabase
     .from('stations')

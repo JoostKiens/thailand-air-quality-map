@@ -471,19 +471,29 @@ Each job is a standalone script in `packages/backend/src/jobs/`, invoked directl
 Railway cron (no job queue). Schedules are configured in Railway's cron service UI.
 
 ```
-firms-ingest       — every 3h  (0 */3 * * *)   fetches VIIRS data, upserts to Supabase, updates Redis
+firms-ingest       — daily     (0 10 * * *)     fetches VIIRS data for TODAY (UTC); last satellite pass
+                                                lands ~06:12 UTC and is in the DB by ~09:00 UTC, so
+                                                10:00 UTC guarantees a complete day before storing
 stations-ingest    — weekly    (0 0 * * 0)      fetches OpenAQ locations by bbox, upserts stations table
                                                 including pm25_sensor_ids and datetime_last;
                                                 skips locations where datetimeLast > 30 days
-aqi-ingest         — daily     (0 4 * * *)      reads pm25_sensor_ids from stations table (no fetchLocations call),
-                                                fetches daily averages via /hours/daily per sensor ID,
-                                                upserts to measurements, updates Redis
-weather-ingest     — daily     (0 4 * * *)      fetches Open-Meteo weather grid (wind, precipitation,
-                                                humidity, temperature), upserts to Supabase
-                                                weather_readings, updates Redis (weather:{date}, TTL 25h)
-aq-ingest          — every 6h  (0 */6 * * *)    fetches Open-Meteo CAMS PM2.5 grid, writes to Redis (no DB)
+aq-ingest          — daily     (0 1 * * *)      fetches Open-Meteo CAMS PM2.5 grid for YESTERDAY (UTC);
+                                                runs before aqi/weather so the grid is ready when
+                                                /api/latest-date is first queried in the morning
 prune              — daily     (0 2 * * *)      deletes fire_points, measurements, aq_grid rows > 40 days
+aqi-ingest         — daily     (0 4 * * *)      reads pm25_sensor_ids from stations table (no fetchLocations call),
+                                                fetches daily averages for YESTERDAY via /hours/daily;
+                                                OpenAQ uses BKK (+07:00) day boundaries — yesterday's full
+                                                24h window closes at 16:59 UTC, giving OpenAQ 11h to process
+weather-ingest     — daily     (0 4 * * *)      fetches Open-Meteo weather grid for YESTERDAY (07:00 UTC
+                                                snapshot); upserts to Supabase weather_readings and Redis
+                                                (weather:{date}, TTL 25h)
 ```
+
+All times are UTC (Railway runs in UTC). The UI shows the most recent date where all three
+gating sources have complete data (AQ grid ≥ 4,000 rows, fires ≥ 1, measurements ≥ 1),
+served by GET /api/latest-date. This date becomes available at ~04:30 UTC each day (11:30 BKK)
+after aqi-ingest and weather-ingest complete.
 
 Each script exits with code 0 on success and non-zero on failure. Retry logic is
 implemented within the script (3 attempts with exponential backoff where applicable).

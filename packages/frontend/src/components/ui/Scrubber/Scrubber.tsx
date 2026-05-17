@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useUIStore, dayToDate } from '../../../store/uiStore';
 import { useTimeStore } from '../../../store/timeStore';
+import { useLatestDate } from '../../../hooks/useLatestDate';
 import { PlayButton } from './PlayButton';
 
 const DAYS = 30;
@@ -30,12 +31,13 @@ export function Scrubber() {
   const playing = useUIStore((s) => s.playing);
   const setPlaying = useUIStore((s) => s.setPlaying);
   const setDate = useTimeStore((s) => s.setDate);
+  const { data: latestDate } = useLatestDate();
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingRef = useRef(false);
 
-  const dateStr = dayToDate(scrubberDay);
+  const dateStr = dayToDate(scrubberDay, latestDate);
 
   // Debounced timeStore sync
   useEffect(() => {
@@ -112,11 +114,15 @@ export function Scrubber() {
           className="w-full"
         />
         <div className="hidden md:flex justify-between mt-0.5">
-          <span className="text-[10px] text-gray-400">{formatTickDate(dayToDate(0))}</span>
           <span className="text-[10px] text-gray-400">
-            {formatTickDate(dayToDate(Math.floor((DAYS - 1) / 2)))}
+            {formatTickDate(dayToDate(0, latestDate))}
           </span>
-          <span className="text-[10px] text-gray-400">Yesterday</span>
+          <span className="text-[10px] text-gray-400">
+            {formatTickDate(dayToDate(Math.floor((DAYS - 1) / 2), latestDate))}
+          </span>
+          <span className="text-[10px] text-gray-400">
+            {latestDate ? formatTickDate(latestDate) : '—'}
+          </span>
         </div>
       </div>
     </div>

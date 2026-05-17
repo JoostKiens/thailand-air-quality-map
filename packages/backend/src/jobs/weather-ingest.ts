@@ -19,8 +19,15 @@ export async function runWeatherIngest(
   date?: string,
   opts?: RunWeatherIngestOptions,
 ): Promise<{ stored: number }> {
-  const calendarDayUtc = opts?.calendarDayUtc ?? new Date().toISOString().slice(0, 10);
-  const targetDate = date ?? calendarDayUtc;
+  // Default to yesterday: the 07:00 UTC wind snapshot hasn't been taken yet when the cron
+  // runs at 04:00 UTC, so today's reading would be missing or stale.
+  const yesterday = (() => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const calendarDayUtc = opts?.calendarDayUtc ?? yesterday;
+  const targetDate = date ?? yesterday;
 
   console.log(`[weather-ingest] Fetching weather grid for ${targetDate} from Open-Meteo...`);
   const readings = await pRetry(

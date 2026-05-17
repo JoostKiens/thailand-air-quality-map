@@ -61,8 +61,13 @@ export const useUIStore = create<UIStore>((set) => ({
 
 const ICT_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7 — Bangkok / ICT
 
-// day 0 = 30 days ago (ICT), day 29 = yesterday (ICT)
-export function dayToDate(day: number): string {
+// day 0 = 29 days before latestDate, day 29 = latestDate.
+// When latestDate is unknown (loading), falls back to yesterday ICT.
+export function dayToDate(day: number, latestDate?: string): string {
+  if (latestDate) {
+    const anchorMs = new Date(latestDate + 'T00:00:00Z').getTime();
+    return new Date(anchorMs - (29 - day) * 86_400_000).toISOString().slice(0, 10);
+  }
   const todayIctMs = Date.now() + ICT_OFFSET_MS;
   const d = new Date(todayIctMs - (30 - day) * 86_400_000);
   return d.toISOString().slice(0, 10);
