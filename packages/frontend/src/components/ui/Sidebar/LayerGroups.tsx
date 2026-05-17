@@ -77,6 +77,9 @@ function AirQualityGroup() {
 
       {(aqGrid || aqStations) && (
         <div className="mt-2.5 space-y-1">
+          <div className="flex justify-end mb-0.5">
+            <span className="text-[9px] text-gray-400">µg/m³</span>
+          </div>
           {AQI_CATEGORIES.map((cat) => (
             <div key={cat.label} className="flex items-center gap-2">
               <span
