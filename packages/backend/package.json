@@ -17,7 +17,6 @@
     "ingest:weather:today": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-weather-today.ts",
     "ingest:aq": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq.ts",
     "ingest:aq:today": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-aq-today.ts",
-    "backfill": "node --env-file=.env.local --import=tsx/esm src/scripts/backfill.ts",
     "prune": "node --env-file=.env.local --import=tsx/esm src/scripts/prune.ts",
     "ingest:stations": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-stations.ts",
     "ingest:power-plants": "node --env-file=.env.local --import=tsx/esm src/scripts/ingest-power-plants.ts",
@@ -27,7 +26,6 @@
     "railway:ingest:stations": "node --import=tsx/esm src/scripts/ingest-stations.ts",
     "railway:ingest:weather:today": "node --import=tsx/esm src/scripts/ingest-weather-today.ts",
     "railway:ingest:aq:today": "node --import=tsx/esm src/scripts/ingest-aq-today.ts",
-    "railway:backfill": "node --import=tsx/esm src/scripts/backfill.ts",
     "railway:prune": "node --import=tsx/esm src/scripts/prune.ts"
   },
   "dependencies": {
