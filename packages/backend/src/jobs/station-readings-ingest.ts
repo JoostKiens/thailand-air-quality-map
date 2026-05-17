@@ -11,7 +11,7 @@ const CONSECUTIVE_429_ABORT = 5;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function runAqiIngest(date?: string): Promise<{
+export async function runStationReadingsIngest(date?: string): Promise<{
   sensorsQueried: number;
   measurementsInserted: number;
 }> {
@@ -37,12 +37,14 @@ export async function runAqiIngest(date?: string): Promise<{
   if (stationsError) throw new Error(`Failed to fetch stations: ${stationsError.message}`);
 
   if (!stationRows?.length) {
-    console.warn('[aqi-ingest] no stations with pm25_sensor_ids found — run stations-ingest first');
+    console.warn(
+      '[station-readings-ingest] no stations with pm25_sensor_ids found — run stations-ingest first',
+    );
     return { sensorsQueried: 0, measurementsInserted: 0 };
   }
 
   console.log(
-    `[aqi-ingest] Fetching measurements for ${targetDate} across ${stationRows.length} sensors...`,
+    `[station-readings-ingest] Fetching measurements for ${targetDate} across ${stationRows.length} sensors...`,
   );
 
   // --- fetch daily average per sensor with header-driven adaptive delay ---
@@ -83,7 +85,7 @@ export async function runAqiIngest(date?: string): Promise<{
         // Window nearly exhausted — schedule a long pause before the next request
         nextDelayMs = timeUntilResetMs + 1_000;
         console.warn(
-          `[aqi-ingest] rate limit nearly exhausted, pausing ${Math.round(nextDelayMs / 1000)}s until reset`,
+          `[station-readings-ingest] rate limit nearly exhausted, pausing ${Math.round(nextDelayMs / 1000)}s until reset`,
         );
       } else {
         // Spread remaining quota evenly over the remaining window,
@@ -97,7 +99,7 @@ export async function runAqiIngest(date?: string): Promise<{
       consecutive429s++;
       if (consecutive429s >= CONSECUTIVE_429_ABORT) {
         throw new Error(
-          `[aqi-ingest] Aborting: ${consecutive429s} consecutive sensors skipped due to 429. ` +
+          `[station-readings-ingest] Aborting: ${consecutive429s} consecutive sensors skipped due to 429. ` +
             `Hourly quota likely exhausted. Stopping to avoid an OpenAQ ban.`,
         );
       }
@@ -118,18 +120,20 @@ export async function runAqiIngest(date?: string): Promise<{
     }
   }
 
-  console.log(`[aqi-ingest] Collected ${measurementRows.length} measurements for ${targetDate}`);
+  console.log(
+    `[station-readings-ingest] Collected ${measurementRows.length} measurements for ${targetDate}`,
+  );
 
   // --- insert in batches ---
   for (let i = 0; i < measurementRows.length; i += BATCH_SIZE) {
     const batch = measurementRows.slice(i, i + BATCH_SIZE);
     const { error } = await supabase
-      .from('measurements')
+      .from('station_readings')
       .upsert(batch, { onConflict: 'sensor_id,measured_at', ignoreDuplicates: false });
 
     if (error) {
       throw new Error(
-        `[aqi-ingest] Measurements upsert failed (batch ${i / BATCH_SIZE + 1}): ${error.message}`,
+        `[station-readings-ingest] Measurements upsert failed (batch ${i / BATCH_SIZE + 1}): ${error.message}`,
       );
     }
   }
@@ -137,11 +141,11 @@ export async function runAqiIngest(date?: string): Promise<{
   // Invalidate Redis cache
   await Promise.all(
     PARAMETERS.flatMap((p) => [
-      redis.del(`measurements:latest:${p}:current`),
-      redis.del(`measurements:latest:${p}:${targetDate}`),
+      redis.del(`station-readings:latest:${p}:current`),
+      redis.del(`station-readings:latest:${p}:${targetDate}`),
     ]),
   );
 
-  console.log('[aqi-ingest] Done');
+  console.log('[station-readings-ingest] Done');
   return { sensorsQueried, measurementsInserted: measurementRows.length };
 }

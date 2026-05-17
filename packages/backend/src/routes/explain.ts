@@ -176,7 +176,7 @@ export function explainRoutes(app: FastifyInstance): void {
       // Gather all context in parallel
       const [stationRows, fireRows, peerRows, windCache] = await Promise.all([
         supabase
-          .from('measurements')
+          .from('station_readings')
           .select('value, measured_at, stations(id, name)')
           .eq('station_id', stationId)
           .eq('parameter', 'pm25')
@@ -195,7 +195,7 @@ export function explainRoutes(app: FastifyInstance): void {
           .lte('lng', lng + BOX_FIRE),
 
         supabase
-          .from('measurements')
+          .from('station_readings')
           .select('value, measured_at, station_id, stations(id, name, lat, lng)')
           .eq('parameter', 'pm25')
           .gte('measured_at', since3h)

@@ -34,7 +34,7 @@ export function usePrefetchAdjacentDates(latestDate?: string) {
       void queryClient.prefetchQuery({
         queryKey: ['aqi-latest', 'pm25', date],
         queryFn: async () => {
-          const res = await fetch(`${API}/api/measurements/latest?parameter=pm25&date=${date}`);
+          const res = await fetch(`${API}/api/station-readings/latest?parameter=pm25&date=${date}`);
           if (!res.ok) throw new Error(`aqi fetch failed: ${res.status}`);
           return ((await res.json()) as { data: LatestMeasurement[] }).data;
         },
@@ -42,10 +42,10 @@ export function usePrefetchAdjacentDates(latestDate?: string) {
       });
 
       void queryClient.prefetchQuery({
-        queryKey: ['aq-grid', date],
+        queryKey: ['cams-grid', date],
         queryFn: async () => {
-          const res = await fetch(`${API}/api/aq/pm25?date=${date}`);
-          if (!res.ok) throw new Error(`aq grid fetch failed: ${res.status}`);
+          const res = await fetch(`${API}/api/cams?date=${date}`);
+          if (!res.ok) throw new Error(`cams grid fetch failed: ${res.status}`);
           return ((await res.json()) as { data: PM25GridPoint[] }).data;
         },
         staleTime: Infinity,

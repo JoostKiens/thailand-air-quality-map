@@ -25,10 +25,10 @@ interface LatestMeasurement {
   measuredAt: string;
 }
 
-export function measurementsRoutes(app: FastifyInstance): void {
-  // GET /api/measurements/latest?parameter=pm25&bbox=...&date=YYYY-MM-DD
+export function stationReadingsRoutes(app: FastifyInstance): void {
+  // GET /api/station-readings/latest?parameter=pm25&bbox=...&date=YYYY-MM-DD
   app.get<{ Querystring: { parameter?: string; bbox?: string; date?: string } }>(
-    '/api/measurements/latest',
+    '/api/station-readings/latest',
     async (req, reply) => {
       const parameter = req.query.parameter ?? 'pm25';
       const rawBbox = req.query.bbox;
@@ -42,7 +42,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
 
       const bbox = parseBbox(rawBbox);
       const isDefaultBbox = !rawBbox || rawBbox === DEFAULT_BBOX;
-      const cacheKey = `measurements:latest:${parameter}:${date ?? 'current'}`;
+      const cacheKey = `station-readings:latest:${parameter}:${date ?? 'current'}`;
 
       if (isDefaultBbox) {
         const cached = await redis.get<LatestMeasurement[]>(cacheKey);
@@ -57,7 +57,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
       const until = date ? `${date}T23:59:59Z` : undefined;
 
       let query = supabase
-        .from('measurements')
+        .from('station_readings')
         .select(
           'station_id, sensor_id, parameter, value, unit, measured_at, stations(id, name, lat, lng)',
         )
@@ -116,9 +116,9 @@ export function measurementsRoutes(app: FastifyInstance): void {
     },
   );
 
-  // GET /api/measurements/history?station_id=...&parameter=pm25&hours=24
+  // GET /api/station-readings/history?station_id=...&parameter=pm25&hours=24
   app.get<{ Querystring: { station_id?: string; parameter?: string; hours?: string } }>(
-    '/api/measurements/history',
+    '/api/station-readings/history',
     async (req, reply) => {
       const { station_id: stationId, hours: rawHours } = req.query;
       const parameter = req.query.parameter ?? 'pm25';
@@ -145,7 +145,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
       const { data, error } = await supabase
-        .from('measurements')
+        .from('station_readings')
         .select('station_id, sensor_id, parameter, value, unit, measured_at')
         .eq('station_id', stationId)
         .eq('parameter', parameter)
@@ -196,7 +196,7 @@ export function measurementsRoutes(app: FastifyInstance): void {
       const until = new Date(endMidnightUtcMs + 86_400_000).toISOString(); // exclusive
 
       const { data, error } = await supabase
-        .from('measurements')
+        .from('station_readings')
         .select('value, measured_at')
         .eq('station_id', stationId)
         .eq('parameter', 'pm25')

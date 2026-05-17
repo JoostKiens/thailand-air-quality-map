@@ -3,10 +3,10 @@ import { supabase } from '../db/client.js';
 import { redis } from '../cache/client.js';
 import { fetchFirms } from '../lib/firms.js';
 
-export async function runFirmsIngest(date?: string): Promise<{ inserted: number }> {
+export async function runFiresIngest(date?: string): Promise<{ inserted: number }> {
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
 
-  console.log(`[firms-ingest] Fetching FIRMS data for ${targetDate}...`);
+  console.log(`[fires-ingest] Fetching FIRMS data for ${targetDate}...`);
   const rows = await pRetry(
     async () => {
       try {
@@ -23,14 +23,14 @@ export async function runFirmsIngest(date?: string): Promise<{ inserted: number 
       factor: 2,
       onFailedAttempt: (err) =>
         console.warn(
-          `[firms-ingest] attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
+          `[fires-ingest] attempt ${err.attemptNumber} failed, ${err.retriesLeft} retries left: ${err.message}`,
         ),
     },
   );
-  console.log(`[firms-ingest] Fetched ${rows.length} rows`);
+  console.log(`[fires-ingest] Fetched ${rows.length} rows`);
 
   if (rows.length === 0) {
-    console.warn(`[firms-ingest] No fire data returned for ${targetDate} — skipping writes`);
+    console.warn(`[fires-ingest] No fire data returned for ${targetDate} — skipping writes`);
     return { inserted: 0 };
   }
 
@@ -55,13 +55,12 @@ export async function runFirmsIngest(date?: string): Promise<{ inserted: number 
     .upsert(records, { onConflict: 'detected_at,lat,lng', ignoreDuplicates: true });
 
   if (error) {
-    throw new Error(`Supabase upsert failed: ${error.message}`);
+    throw new Error(`[fires-ingest] Supabase upsert failed: ${error.message}`);
   }
 
   // Invalidate the Redis cache for this date so the next API request re-fetches from Supabase.
-  // Without this, requests made before ingest runs would cache an empty result for up to 3h.
   await redis.del(`fires:date:${targetDate}`);
 
-  console.log(`[firms-ingest] Upserted ${records.length} rows (duplicates silently skipped)`);
+  console.log(`[fires-ingest] Upserted ${records.length} rows (duplicates silently skipped)`);
   return { inserted: records.length };
 }

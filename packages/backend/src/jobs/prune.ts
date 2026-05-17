@@ -33,7 +33,7 @@ export async function runPrune(): Promise<{
   }
 
   const { count: measurementsDeleted, error: measurementsError } = await supabase
-    .from('measurements')
+    .from('station_readings')
     .delete({ count: 'exact' })
     .lt('measured_at', cutoffIso);
 
@@ -42,12 +42,12 @@ export async function runPrune(): Promise<{
   }
 
   const { count: aqGridDeleted, error: aqGridError } = await supabase
-    .from('aq_grid')
+    .from('cams_grid')
     .delete({ count: 'exact' })
     .lt('date', cutoffDate);
 
   if (aqGridError) {
-    throw new Error(`Failed to prune aq_grid: ${aqGridError.message}`);
+    throw new Error(`Failed to prune cams_grid: ${aqGridError.message}`);
   }
 
   const { count: weatherReadingsDeleted, error: weatherError } = await supabase

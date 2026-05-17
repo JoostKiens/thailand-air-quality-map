@@ -7,10 +7,10 @@ const API = import.meta.env.VITE_API_BASE_URL;
 export function useAQGrid() {
   const selectedDate = useTimeStore((s) => s.selectedDate);
   return useQuery({
-    queryKey: ['aq-grid', selectedDate],
+    queryKey: ['cams-grid', selectedDate],
     queryFn: async () => {
-      const res = await fetch(`${API}/api/aq/pm25?date=${selectedDate}`);
-      if (!res.ok) throw new Error(`aq grid fetch failed: ${res.status}`);
+      const res = await fetch(`${API}/api/cams?date=${selectedDate}`);
+      if (!res.ok) throw new Error(`cams grid fetch failed: ${res.status}`);
       return ((await res.json()) as { data: PM25GridPoint[] }).data;
     },
     staleTime: Infinity, // historical dates are immutable after ingestion

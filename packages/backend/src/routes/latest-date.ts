@@ -19,14 +19,14 @@ export function latestDateRoutes(app: FastifyInstance): void {
       const nextDate = new Date(now - (offset - 1) * 86_400_000).toISOString().slice(0, 10);
 
       const [aqResult, fireResult, measResult] = await Promise.all([
-        supabase.from('aq_grid').select('*', { count: 'exact', head: true }).eq('date', date),
+        supabase.from('cams_grid').select('*', { count: 'exact', head: true }).eq('date', date),
         supabase
           .from('fire_points')
           .select('*', { count: 'exact', head: true })
           .gte('detected_at', `${date}T00:00:00Z`)
           .lt('detected_at', `${nextDate}T00:00:00Z`),
         supabase
-          .from('measurements')
+          .from('station_readings')
           .select('*', { count: 'exact', head: true })
           .gte('measured_at', `${date}T00:00:00Z`)
           .lt('measured_at', `${nextDate}T00:00:00Z`),
