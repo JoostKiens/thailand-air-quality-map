@@ -24,7 +24,6 @@ export function degToCompass(deg: number): string {
   return COMPASS[idx];
 }
 
-// AQ grid is 0.4° — only return a cell if the click is within 0.2° (half cell)
 export function findNearestAQPoint(
   grid: PM25GridPoint[],
   lng: number,
@@ -40,7 +39,7 @@ export function findNearestAQPoint(
       best = p;
     }
   }
-  return bestDist <= 0.04 ? best : null; // 0.2° radius
+  return best;
 }
 
 export function findNearestWind(
