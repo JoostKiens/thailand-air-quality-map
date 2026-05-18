@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { PathLayer } from 'deck.gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import type { WindReading } from '@thailand-aq/types';
+import type { WindReading, PM25GridPoint } from '@thailand-aq/types';
+import { pm25ToRgb } from '../lib/aqiColors';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,6 @@ const TRAIL_SPEED_REF = 13; // km/h
 const BASE_ZOOM = 5.5;
 const MIN_AGE = 80;
 const MAX_AGE = 220;
-const COLOR: [number, number, number] = [255, 255, 255];
 
 // Grid bounds — must match the weather grid constants in openmeteo.ts.
 // 0.4° step, lng 89→114 (63 pts), lat 1→30 (73 pts) = 4,599 points.
@@ -50,6 +50,7 @@ interface Particle {
   age: number;
   maxAge: number;
   trail: [number, number][];
+  color: [number, number, number]; // lightened AQI RGB sampled at spawn
 }
 
 // Flat grid: index = latIdx * GRID_LNG_COUNT + lngIdx
@@ -115,21 +116,49 @@ function mapViewport(map: mapboxgl.Map): Viewport {
 
 // ─── particle helpers ─────────────────────────────────────────────────────────
 
-function spawnParticle(viewport: Viewport, scatterAge = false): Particle {
+// Reuses the existing grid constants (same 0.4° step, same origin) to produce
+// an integer index key — avoids floating-point string formatting issues.
+function sampleSpawnColor(
+  lng: number,
+  lat: number,
+  gridMap: Map<string, number> | null,
+): [number, number, number] {
+  if (!gridMap) return [255, 255, 255];
+  const lngIdx = Math.round((lng - GRID_LNG_MIN) / GRID_STEP);
+  const latIdx = Math.round((lat - GRID_LAT_MIN) / GRID_STEP);
+  const pm25 = gridMap.get(`${lngIdx},${latIdx}`);
+  if (pm25 === undefined) return [255, 255, 255];
+  const [r, g, b] = pm25ToRgb(pm25);
+  // Lighten 50% toward white so particles stay visible over the CAMS heatmap
+  return [
+    Math.round(r + (255 - r) * 0.5),
+    Math.round(g + (255 - g) * 0.5),
+    Math.round(b + (255 - b) * 0.5),
+  ];
+}
+
+function spawnParticle(
+  viewport: Viewport,
+  gridMap: Map<string, number> | null,
+  scatterAge = false,
+): Particle {
   const [west, south, east, north] = viewport;
+  const lng = west + Math.random() * (east - west);
+  const lat = south + Math.random() * (north - south);
   const maxAge = MIN_AGE + Math.floor(Math.random() * (MAX_AGE - MIN_AGE));
   return {
-    lng: west + Math.random() * (east - west),
-    lat: south + Math.random() * (north - south),
+    lng,
+    lat,
     age: scatterAge ? Math.floor(Math.random() * maxAge) : 0,
     maxAge,
     trail: [],
+    color: sampleSpawnColor(lng, lat, gridMap),
   };
 }
 
-function initParticles(viewport: Viewport): Particle[] {
+function initParticles(viewport: Viewport, gridMap: Map<string, number> | null): Particle[] {
   // scatterAge=true distributes initial ages so they don't all fade out simultaneously
-  return Array.from({ length: N_PARTICLES }, () => spawnParticle(viewport, true));
+  return Array.from({ length: N_PARTICLES }, () => spawnParticle(viewport, gridMap, true));
 }
 
 function stepParticles(
@@ -137,6 +166,7 @@ function stepParticles(
   grid: WindGrid,
   dtScale: number,
   spawnViewport: Viewport,
+  gridMap: Map<string, number> | null,
 ): void {
   for (const p of particles) {
     const [dx, dy] = sampleWind(p.lng, p.lat, grid);
@@ -164,12 +194,13 @@ function stepParticles(
       p.lat > SPAWN_LAT_MAX;
 
     if (p.age >= p.maxAge || oob) {
-      const fresh = spawnParticle(spawnViewport, false);
+      const fresh = spawnParticle(spawnViewport, gridMap, false);
       p.lng = fresh.lng;
       p.lat = fresh.lat;
       p.age = 0;
       p.maxAge = fresh.maxAge;
       p.trail = [];
+      p.color = fresh.color;
     }
   }
 }
@@ -181,11 +212,13 @@ export function useWindParticles(
   map: mapboxgl.Map | null,
   wind: WindReading[] | undefined,
   config: { visible: boolean; opacity: number },
+  aqGrid?: PM25GridPoint[] | null,
 ): void {
   // Use a single mutable ref object to avoid stale closure issues in the rAF loop.
   const stateRef = useRef({
     particles: [] as Particle[],
     grid: null as WindGrid | null,
+    gridMap: null as Map<string, number> | null,
     visible: config.visible,
     opacity: config.opacity,
     zoom: BASE_ZOOM,
@@ -219,11 +252,32 @@ export function useWindParticles(
     overlay.setProps({ layers: [] });
   }, [wind, overlay]);
 
+  // Rebuild PM2.5 lookup map whenever CAMS grid changes.
+  // Uses integer index keys (same 0.4° grid as wind) — O(1) spawn lookup.
+  useEffect(() => {
+    if (!aqGrid?.length) {
+      stateRef.current.gridMap = null;
+      return;
+    }
+    const map = new Map<string, number>();
+    for (const p of aqGrid) {
+      const lngIdx = Math.round((p.lng - GRID_LNG_MIN) / GRID_STEP);
+      const latIdx = Math.round((p.lat - GRID_LAT_MIN) / GRID_STEP);
+      map.set(`${lngIdx},${latIdx}`, p.pm25);
+    }
+    stateRef.current.gridMap = map;
+    // Recolor existing particles immediately so particles spawned before CAMS
+    // loaded don't stay white until they happen to die and respawn.
+    for (const p of stateRef.current.particles) {
+      p.color = sampleSpawnColor(p.lng, p.lat, map);
+    }
+  }, [aqGrid]);
+
   // Rebuild grid and reset particles whenever wind data changes.
   useEffect(() => {
     if (!wind?.length) return;
     stateRef.current.grid = buildGrid(wind);
-    stateRef.current.particles = initParticles(stateRef.current.viewport);
+    stateRef.current.particles = initParticles(stateRef.current.viewport, stateRef.current.gridMap);
   }, [wind]);
 
   // Animation loop — runs as long as the overlay, map, and wind data are present.
@@ -239,21 +293,21 @@ export function useWindParticles(
       const dt = lastTime ? Math.min(time - lastTime, 50) : 16.67;
       lastTime = time;
 
-      const { grid, particles, visible, opacity, zoom, viewport } = stateRef.current;
+      const { grid, gridMap, particles, visible, opacity, zoom, viewport } = stateRef.current;
 
       if (!visible || !grid) {
         ov.setProps({ layers: [] });
       } else {
         const zoomScale = Math.pow(2, BASE_ZOOM - zoom);
         const dtScale = (dt / 16.67) * zoomScale;
-        stepParticles(particles, grid, dtScale, viewport);
+        stepParticles(particles, grid, dtScale, viewport, gridMap);
 
         const layer = new PathLayer<Particle>({
           id: 'wind-particles',
           data: particles.filter((p) => p.trail.length >= 2),
           getPath: (p) => p.trail,
           getColor: (p) =>
-            [...COLOR, Math.round(opacity * 220 * (1 - p.age / p.maxAge))] as [
+            [...p.color, Math.round(opacity * 220 * (1 - p.age / p.maxAge))] as [
               number,
               number,
               number,

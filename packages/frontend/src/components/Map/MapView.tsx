@@ -77,7 +77,7 @@ export function MapView() {
   const powerPlantsEnabled = powerPlantsConfig.visible || !!selectedPoint?.station;
   const { data: powerPlants } = usePowerPlants(powerPlantsEnabled);
 
-  useWindParticles(windOverlay, map, wind, windConfig);
+  useWindParticles(windOverlay, map, wind, windConfig, aqGrid);
   const { data: latestDate } = useLatestDate();
   usePrefetchAdjacentDates(latestDate);
 
