@@ -3,7 +3,6 @@ import mapboxgl from 'mapbox-gl';
 import { PathLayer } from 'deck.gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { WindReading, PM25GridPoint } from '@thailand-aq/types';
-import { pm25ToRgb } from '../lib/aqiColors';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -114,6 +113,29 @@ function mapViewport(map: mapboxgl.Map): Viewport {
   ];
 }
 
+// ─── particle color map ───────────────────────────────────────────────────────
+
+// Per-category particle colors — hand-tuned to be visually distinct, light
+// enough to stand out over the CAMS heatmap, and calm enough not to dominate.
+// Order mirrors AQI_CATEGORIES in aqiColors.ts (Good → Hazardous).
+const PARTICLE_COLORS: [number, number, number][] = [
+  [168, 197, 160], // Good              — muted sage
+  [240, 220, 100], // Moderate          — vivid gold
+  [240, 165, 75], // Unhealthy (s)     — vivid orange
+  [240, 90, 90], // Unhealthy         — vivid red
+  [180, 130, 210], // Very unhealthy    — vivid purple
+  [205, 80, 110], // Hazardous         — vivid rose
+];
+
+const PM25_BP = [12.0, 35.4, 55.4, 150.4, 250.4];
+
+function pm25ToParticleColor(pm25: number): [number, number, number] {
+  for (let i = 0; i < PM25_BP.length; i++) {
+    if (pm25 <= PM25_BP[i]) return PARTICLE_COLORS[i];
+  }
+  return PARTICLE_COLORS[PARTICLE_COLORS.length - 1];
+}
+
 // ─── particle helpers ─────────────────────────────────────────────────────────
 
 // Reuses the existing grid constants (same 0.4° step, same origin) to produce
@@ -128,13 +150,7 @@ function sampleSpawnColor(
   const latIdx = Math.round((lat - GRID_LAT_MIN) / GRID_STEP);
   const pm25 = gridMap.get(`${lngIdx},${latIdx}`);
   if (pm25 === undefined) return [255, 255, 255];
-  const [r, g, b] = pm25ToRgb(pm25);
-  // Lighten 50% toward white so particles stay visible over the CAMS heatmap
-  return [
-    Math.round(r + (255 - r) * 0.5),
-    Math.round(g + (255 - g) * 0.5),
-    Math.round(b + (255 - b) * 0.5),
-  ];
+  return pm25ToParticleColor(pm25);
 }
 
 function spawnParticle(
