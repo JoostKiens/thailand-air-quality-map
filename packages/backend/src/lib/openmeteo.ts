@@ -14,11 +14,11 @@ const WEATHER_LAT_MAX = 30;
 const WEATHER_LNG_COUNT = Math.floor((WEATHER_LNG_MAX - WEATHER_LNG_MIN) / WEATHER_STEP) + 1; // 63
 const WEATHER_LAT_COUNT = Math.floor((WEATHER_LAT_MAX - WEATHER_LAT_MIN) / WEATHER_STEP) + 1; // 73
 
-// 500 locations per batch — 1,000 caused 413 Payload Too Large because the per-location
-// array fields (timezone, start_date, end_date) balloon the POST body to ~30 KB.
-// 4,599 points → 10 batches of ≤500 → 10 API calls per ingest run (still well within
-// the 10,000/day free tier limit).
-const WEATHER_BATCH_SIZE = 500;
+// 300 locations per batch — the multi-location POST endpoint requires per-location
+// arrays for timezone/start_date/end_date, so payload grows linearly with batch size.
+// 500 caused 413; 300 keeps each POST body ~18 KB. 4,599 points → 16 batches of ≤300
+// → 16 API calls per ingest run (well within the 10,000/day free tier limit).
+const WEATHER_BATCH_SIZE = 300;
 
 // 5 s between batches avoids the minutely burst limit.
 // 10 batches × 5 s = ~50 s total run time.
@@ -73,7 +73,7 @@ async function fetchWeatherBatch(
     start_date: lats.map(() => date),
     end_date: lats.map(() => date),
     timezone: lats.map(() => 'UTC'),
-    wind_speed_unit: 'kmh', // global scalar — not per-location
+    wind_speed_unit: 'kmh',
   });
 
   let res: Response | undefined;
